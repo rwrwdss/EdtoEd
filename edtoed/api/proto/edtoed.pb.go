@@ -23,6 +23,9 @@ const (
 
 type StudentActivityRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
+	CohortId      string                 `protobuf:"bytes,6,opt,name=cohort_id,json=cohortId,proto3" json:"cohort_id,omitempty"`
+	WindowStart   int64                  `protobuf:"varint,7,opt,name=window_start,json=windowStart,proto3" json:"window_start,omitempty"`        // Inclusive Unix seconds.
+	WindowEnd     int64                  `protobuf:"varint,8,opt,name=window_end,json=windowEnd,proto3" json:"window_end,omitempty"`              // Exclusive Unix seconds.
 	StudentId     string                 `protobuf:"bytes,1,opt,name=student_id,json=studentId,proto3" json:"student_id,omitempty"`               // student hash
 	TopicId       string                 `protobuf:"bytes,2,opt,name=topic_id,json=topicId,proto3" json:"topic_id,omitempty"`                     // study topic ID
 	ClicksCount   int32                  `protobuf:"varint,3,opt,name=clicks_count,json=clicksCount,proto3" json:"clicks_count,omitempty"`        // click's count
@@ -60,6 +63,27 @@ func (x *StudentActivityRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use StudentActivityRequest.ProtoReflect.Descriptor instead.
 func (*StudentActivityRequest) Descriptor() ([]byte, []int) {
 	return file_api_proto_edtoed_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *StudentActivityRequest) GetCohortId() string {
+	if x != nil {
+		return x.CohortId
+	}
+	return ""
+}
+
+func (x *StudentActivityRequest) GetWindowStart() int64 {
+	if x != nil {
+		return x.WindowStart
+	}
+	return 0
+}
+
+func (x *StudentActivityRequest) GetWindowEnd() int64 {
+	if x != nil {
+		return x.WindowEnd
+	}
+	return 0
 }
 
 func (x *StudentActivityRequest) GetStudentId() string {
@@ -169,8 +193,12 @@ var File_api_proto_edtoed_proto protoreflect.FileDescriptor
 
 const file_api_proto_edtoed_proto_rawDesc = "" +
 	"\n" +
-	"\x16api/proto/edtoed.proto\x12\x06edtoed\"\xbb\x01\n" +
-	"\x16StudentActivityRequest\x12\x1d\n" +
+	"\x16api/proto/edtoed.proto\x12\x06edtoed\"\x9a\x02\n" +
+	"\x16StudentActivityRequest\x12\x1b\n" +
+	"\tcohort_id\x18\x06 \x01(\tR\bcohortId\x12!\n" +
+	"\fwindow_start\x18\a \x01(\x03R\vwindowStart\x12\x1d\n" +
+	"\n" +
+	"window_end\x18\b \x01(\x03R\twindowEnd\x12\x1d\n" +
 	"\n" +
 	"student_id\x18\x01 \x01(\tR\tstudentId\x12\x19\n" +
 	"\btopic_id\x18\x02 \x01(\tR\atopicId\x12!\n" +

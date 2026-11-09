@@ -13,6 +13,9 @@ type Handler struct {
 }
 
 type analyzeRequest struct {
+	CohortID      string  `json:"cohort_id"`
+	WindowStart   int64   `json:"window_start"`
+	WindowEnd     int64   `json:"window_end"`
 	StudentID     string  `json:"student_id"`
 	TopicID       string  `json:"topic_id"`
 	ClicksCount   int32   `json:"clicks_count"`
@@ -62,6 +65,7 @@ func (h Handler) analyze(w http.ResponseWriter, r *http.Request) {
 	result, err := h.Analyzer.AnalyzeStudentMetrics(r.Context(), &pb.StudentActivityRequest{
 		StudentId: input.StudentID, TopicId: input.TopicID, ClicksCount: input.ClicksCount,
 		TestScore: input.TestScore, DeadlineDelay: input.DeadlineDelay,
+		CohortId: input.CohortID, WindowStart: input.WindowStart, WindowEnd: input.WindowEnd,
 	})
 	if err != nil {
 		statusCode := http.StatusInternalServerError

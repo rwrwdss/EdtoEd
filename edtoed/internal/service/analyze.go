@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"math"
+	"strings"
+	"time"
 
 	pb "edtoed/api/proto"
 	"edtoed/internal/features"
@@ -14,7 +16,7 @@ import (
 )
 
 type Store interface {
-	SaveLog(string, string, int, float32, float32) error
+	SnapshotMedian(context.Context, *pb.StudentActivityRequest) (float64, int, error)
 }
 
 type Analyzer struct {
@@ -23,16 +25,25 @@ type Analyzer struct {
 	Predictor ml.Predictor
 }
 
-func (a *Analyzer) AnalyzeStudentMetrics(_ context.Context, req *pb.StudentActivityRequest) (*pb.AnalyticsResponse, error) {
+func (a *Analyzer) AnalyzeStudentMetrics(ctx context.Context, req *pb.StudentActivityRequest) (*pb.AnalyticsResponse, error) {
 	if req == nil || req.StudentId == "" || req.TopicId == "" || req.ClicksCount < 0 || math.IsNaN(float64(req.TestScore)) || req.TestScore < 0 || req.TestScore > 1 || math.IsNaN(float64(req.DeadlineDelay)) || math.IsInf(float64(req.DeadlineDelay), 0) {
 		return nil, status.Error(codes.InvalidArgument, "invalid student activity")
 	}
-	if err := a.Store.SaveLog(req.StudentId, req.TopicId, int(req.ClicksCount), req.TestScore, req.DeadlineDelay); err != nil {
+	if strings.TrimSpace(req.CohortId) == "" || req.WindowStart <= 0 || req.WindowEnd <= req.WindowStart || req.WindowEnd > time.Now().Unix() {
+		return nil, status.Error(codes.InvalidArgument, "cohort and completed observation window required")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	median, count, err := a.Store.SnapshotMedian(ctx, req)
+	if err != nil {
 		return nil, status.Error(codes.Internal, "could not save activity")
 	}
 	// The cohort median is not yet available. This fallback is explicit until
 	// the aggregation layer is implemented.
-	vector := features.Build(req.ClicksCount, 1, req.TestScore, req.DeadlineDelay)
+	if count < 2 || median <= 0 || math.IsNaN(median) || math.IsInf(median, 0) {
+		return nil, status.Error(codes.FailedPrecondition, "snapshot saved; need two students and positive median")
+	}
+	vector := features.Build(req.ClicksCount, median, req.TestScore, req.DeadlineDelay)
 	risk, err := a.Predictor.Predict(vector)
 	if errors.Is(err, ml.ErrInferenceUnavailable) {
 		return nil, status.Error(codes.Unavailable, err.Error())

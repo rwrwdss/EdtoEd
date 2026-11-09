@@ -40,14 +40,18 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/AnalyticsResponse'}
+        '409': {description: Snapshot saved but cohort needs two students and positive median}
         '400': {description: Invalid request}
         '503': {description: Model or dependency unavailable}
 components:
   schemas:
     StudentActivityRequest:
       type: object
-      required: [student_id, topic_id, clicks_count, test_score, deadline_delay]
+      required: [cohort_id, window_start, window_end, student_id, topic_id, clicks_count, test_score, deadline_delay]
       properties:
+        cohort_id: {type: string, example: lmsA_group1}
+        window_start: {type: integer, format: int64, example: 1704067200, description: Inclusive Unix seconds}
+        window_end: {type: integer, format: int64, example: 1706486400, description: Exclusive Unix seconds; completed window}
         student_id: {type: string, example: student_hash_123}
         topic_id: {type: string, example: algebra_01}
         clicks_count: {type: integer, format: int32, minimum: 0, example: 24}
@@ -76,6 +80,8 @@ func grpcCodeToHTTP(err error) int {
 	switch status.Code(err).String() {
 	case "InvalidArgument":
 		return http.StatusBadRequest
+	case "FailedPrecondition":
+		return http.StatusConflict
 	case "Unavailable":
 		return http.StatusServiceUnavailable
 	default:

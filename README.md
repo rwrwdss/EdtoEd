@@ -23,6 +23,6 @@ Training now filters submissions to day 28, excludes banked assessments and alre
 
 The candidate remains in `edtoed/ml_research/artifacts/`; the serving model in `models/` has not been promoted or changed. Existing inference reference tests still apply to that serving model. Do not copy a research model into production without parity checks and acceptance criteria.
 
-The target is academic failure/withdrawal, not measured burnout. The API still uses a temporary cohort median of 1; production validity requires real cohort normalization. Its event contract lacks cohort and observation-window identifiers, so pooling existing events would not reproduce training features.
+The target is academic failure/withdrawal, not measured burnout. API now requires cohort and observation window; it computes the real median from per-student snapshots. See [cohort contract](edtoed/COHORT_API.md) for examples, retry semantics and model compatibility limits.
 
 See [backend documentation](edtoed/README.md) for endpoints and configuration. Its native predictor description is superseded by the runtime integration above.
