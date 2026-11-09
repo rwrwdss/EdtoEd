@@ -1,98 +1,14 @@
-# EdtoEd
+# EdtoEd backend
 
-Актуальное изменение API: обязательны `cohort_id`, `window_start`, `window_end`. [Контракт агрегатов и пример запроса](COHORT_API.md). Медиана вычисляется PostgreSQL по студентам когорты/темы/окна; при недостатке данных возвращается 409. Инференс выполняется через постоянный ONNX Runtime worker, описание нативного predictor ниже устарело.
+[English documentation](../README.md) · [Документация на русском](../README.ru.md)
 
-EdtoEd — универсальный backend-модуль для LMS, который принимает события учебной активности, сохраняет их в PostgreSQL и возвращает риск академического отставания/оттока. Один и тот же сервис доступен через gRPC и REST; документация REST открывается в Swagger UI.
+Run from this directory / запуск из этой папки:
 
-![CI](https://github.com/rwrwdss/EdtoEd/actions/workflows/ci.yml/badge.svg)
-
-## Быстрый старт
-
-```bash
+```sh
 docker compose up --build
 ```
 
-После запуска:
+[Swagger UI](http://localhost:8080/docs) · [Cohort API contract](COHORT_API.md) · [Training / обучение](ml_research/README.md)
 
-- REST API: `http://localhost:8080`
-- Swagger UI: `http://localhost:8080/docs`
-- OpenAPI YAML: `http://localhost:8080/openapi.yaml`
-- gRPC: `localhost:50051`
-- liveness: `GET /healthz`
-- readiness: `GET /readyz`
-
-Пример REST-запроса:
-
-```bash
-curl -X POST http://localhost:8080/v1/analyze \
-  -H 'Content-Type: application/json' \
-  -d '{"student_id":"student_hash_123","topic_id":"algebra_01","clicks_count":24,"test_score":0.72,"deadline_delay":1.5}'
-```
-
-Ответ содержит `burnout_risk` от `0` до `1`, флаг `requires_action` и действие `KEEP_TRACK` или `OFFER_HINT`.
-
-## Архитектура
-
-```text
-REST /v1/analyze ─┐
-                  ├─ service.Analyzer ── features ── Predictor ── model
-gRPC Analyze ─────┘          │
-                             └────────── PostgreSQL event log
-```
-
-- `api/proto/` — gRPC-контракт и сгенерированные типы.
-- `internal/httpapi/` — REST-маршруты, OpenAPI 3.0 и Swagger UI.
-- `internal/service/` — общая бизнес-логика валидации, сохранения и scoring.
-- `internal/features/` — единый порядок входных признаков.
-- `internal/ml/` — интерфейс predictor и быстрый CGO-free predictor текущей ONNX-модели.
-- `internal/storage/` — PostgreSQL и встроенная миграция.
-- `models/` — ровно одна актуальная модель `edtoed_v1.onnx`.
-- `ml_research/` — воспроизводимое обучение OULAD и отчёты.
-
-## Модель
-
-Текущая модель обучена на OULAD с окном первых 28 дней курса. Входной контракт: `[relative_clicks, test_score, deadline_delay]`. Целевая метка: `Fail`/`Withdrawn` против `Pass`/`Distinction`.
-
-Последний тестовый результат при пороге 0.5 (сервис использует 0.7: precision 0.697, recall 0.281):
-
-| Метрика | Значение |
-|---|---:|
-| ROC-AUC | 0.694 |
-| F1 | 0.574 |
-| Accuracy | 0.624 |
-| Recall | 0.661 |
-
-Модель и preprocessing синхронизированы: клики и задержка проходят устойчивое `tanh`-преобразование и одинаковую нормализацию. Для переобучения:
-
-```bash
-cd ml_research
-python3 train_oulad.py
-cp artifacts/edtoed_oulad_v1.onnx ../models/edtoed_v1.onnx
-```
-
-Сырые данные и кэш Python не входят в Git. Production-папка `models/` не содержит старых версий.
-
-## Конфигурация
-
-| Переменная | По умолчанию | Назначение |
-|---|---|---|
-| `DATABASE_URL` | обязательна | PostgreSQL DSN |
-| `MODEL_PATH` | `models/edtoed_v1.onnx` | проверяемый путь модели |
-| `GRPC_ADDR` | `:50051` | адрес gRPC |
-| `HTTP_ADDR` | `:8080` | адрес REST/Swagger |
-
-## Проверки разработчика
-
-```bash
-go test ./...
-go vet ./...
-gofmt -w $(find . -name '*.go' -not -path './api/proto/*')
-```
-
-GitHub Actions автоматически запускает форматирование, тесты, vet и сборку Docker при каждом push и pull request.
-
-## Ограничения и следующий этап
-
-Текущий predictor повторяет математику опубликованной лёгкой ONNX-модели нативно в Go, поэтому контейнер остаётся быстрым и не требует CGO. Для произвольных будущих ONNX-моделей понадобится отдельный runtime adapter с тем же интерфейсом `ml.Predictor`.
-
-Ближайшие продуктовые шаги: реальные cohort-медианы кликов, подтверждённые production-метки, threshold tuning под стоимость ошибок, versioned model registry, OpenTelemetry и нагрузочные тесты.
+The root READMEs are the canonical guides for configuration, examples, architecture and current model metrics.
+Основная документация, примеры, конфигурация и актуальные метрики находятся в README в корне репозитория.
