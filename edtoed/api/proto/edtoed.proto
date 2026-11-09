@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package edtoed;
+option go_package = "edtoed/api/proto;proto";
+
+service EdtoEdService {
+  // LMS send event
+  rpc AnalyzeStudentMetrics (StudentActivityRequest) returns (AnalyticsResponse);
+}
+
+message StudentActivityRequest {
+  string student_id = 1;      // student hash
+  string topic_id = 2;        // study topic ID
+  int32  clicks_count = 3;    // click's count
+  float  test_score = 4;      // score for the interim test (0.0 - 1.0)
+  float  deadline_delay = 5;  // deviation of the submission date from the deadline (in days)
+}
+
+message AnalyticsResponse {
+  string student_id = 1;
+  float  burnout_risk = 2;    // Risk index from 0.0 to 1.0
+  bool   requires_action = 3; // Flag: is LMS intervention required?
+  string action_type = 4;     // "EXTEND_DEADLINE", "OFFER_HINT", "KEEP_TRACK"
+}

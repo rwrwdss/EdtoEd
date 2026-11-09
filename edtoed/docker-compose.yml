@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: edtoed
+      POSTGRES_USER: edtoed
+      POSTGRES_PASSWORD: edtoed_dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edtoed -d edtoed"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgres://edtoed:edtoed_dev@postgres:5432/edtoed?sslmode=disable
+      MODEL_PATH: /app/models/edtoed_v1.onnx
+    ports:
+      - "50051:50051"
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+volumes:
+  postgres_data:
