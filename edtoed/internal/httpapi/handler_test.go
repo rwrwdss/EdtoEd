@@ -6,16 +6,19 @@ import (
 	"strings"
 	"testing"
 
-	"edtoed/internal/ml"
+	"edtoed/internal/features"
 	"edtoed/internal/service"
 )
 
 type testStore struct{}
+type testPredictor struct{}
+
+func (testPredictor) Predict(features.Vector) (float32, error) { return 0.3, nil }
 
 func (testStore) SaveLog(string, string, int, float32, float32) error { return nil }
 
 func TestAnalyzeAndDocsRoutes(t *testing.T) {
-	h := Handler{Analyzer: &service.Analyzer{Store: testStore{}, Predictor: ml.NewLinearPredictor()}}.Routes()
+	h := Handler{Analyzer: &service.Analyzer{Store: testStore{}, Predictor: testPredictor{}}}.Routes()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/analyze", strings.NewReader(`{"student_id":"s1","topic_id":"t1","clicks_count":10,"test_score":0.8,"deadline_delay":0}`))
 	req.Header.Set("Content-Type", "application/json")

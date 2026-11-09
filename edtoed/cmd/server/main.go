@@ -45,7 +45,12 @@ func main() {
 		log.Fatal(err)
 	}
 	server := grpc.NewServer()
-	analyzer := &service.Analyzer{Store: store, Predictor: ml.NewLinearPredictor()}
+	predictor, err := ml.NewRuntime(modelPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer predictor.Close()
+	analyzer := &service.Analyzer{Store: store, Predictor: predictor}
 	pb.RegisterEdtoEdServiceServer(server, analyzer)
 	go func() {
 		if err := server.Serve(listener); err != nil {

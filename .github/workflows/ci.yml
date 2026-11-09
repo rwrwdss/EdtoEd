@@ -19,8 +19,13 @@ jobs:
           cache-dependency-path: edtoed/go.sum
       - name: Check formatting
         run: test -z "$(gofmt -l $(find . -name '*.go' -not -path './api/proto/*'))"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install inference runtime
+        run: pip install onnxruntime==1.22.1 numpy==2.2.6
       - name: Test
-        run: go test ./...
+        run: TEST_ONNX=1 go test -race ./...
       - name: Vet
         run: go vet ./...
       - name: Build
