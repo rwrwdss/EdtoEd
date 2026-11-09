@@ -1,0 +1,88 @@
+package httpapi
+
+import (
+	"encoding/json"
+	"net/http"
+
+	pb "edtoed/api/proto"
+	"edtoed/internal/service"
+)
+
+type Handler struct {
+	Analyzer *service.Analyzer
+}
+
+type analyzeRequest struct {
+	StudentID     string  `json:"student_id"`
+	TopicID       string  `json:"topic_id"`
+	ClicksCount   int32   `json:"clicks_count"`
+	TestScore     float32 `json:"test_score"`
+	DeadlineDelay float32 `json:"deadline_delay"`
+}
+
+type analyzeResponse struct {
+	StudentID      string  `json:"student_id"`
+	BurnoutRisk    float32 `json:"burnout_risk"`
+	RequiresAction bool    `json:"requires_action"`
+	ActionType     string  `json:"action_type"`
+}
+
+func (h Handler) Routes() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", health)
+	mux.HandleFunc("GET /readyz", h.ready)
+	mux.HandleFunc("GET /openapi.yaml", openAPI)
+	mux.HandleFunc("GET /docs", swaggerUI)
+	mux.HandleFunc("POST /v1/analyze", h.analyze)
+	return withJSONHeaders(mux)
+}
+
+func health(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }
+
+func (h Handler) ready(w http.ResponseWriter, _ *http.Request) {
+	if h.Analyzer == nil || h.Analyzer.Store == nil || h.Analyzer.Predictor == nil {
+		http.Error(w, `{"status":"not_ready"}`, http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+}
+
+func (h Handler) analyze(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || h.Analyzer == nil {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	var input analyzeRequest
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil {
+		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	result, err := h.Analyzer.AnalyzeStudentMetrics(r.Context(), &pb.StudentActivityRequest{
+		StudentId: input.StudentID, TopicId: input.TopicID, ClicksCount: input.ClicksCount,
+		TestScore: input.TestScore, DeadlineDelay: input.DeadlineDelay,
+	})
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		if resultStatus := grpcCodeToHTTP(err); resultStatus != 0 {
+			statusCode = resultStatus
+		}
+		http.Error(w, err.Error(), statusCode)
+		return
+	}
+	writeJSON(w, http.StatusOK, analyzeResponse{result.StudentId, result.BurnoutRisk, result.RequiresAction, result.ActionType})
+}
+
+func withJSONHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func writeJSON(w http.ResponseWriter, code int, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(value)
+}

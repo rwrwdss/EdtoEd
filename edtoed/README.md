@@ -1,39 +1,96 @@
 # EdtoEd
 
-Каркас аналитического сервиса для LMS. Сейчас доступны gRPC-контракт, Go-сервер, запись событий в PostgreSQL и HTTP-проверка процесса. ONNX-инференс и обучение ещё не реализованы: метод анализа возвращает gRPC `Unavailable` после сохранения корректного события. Риск оттока пока не рассчитывается.
+EdtoEd — универсальный backend-модуль для LMS, который принимает события учебной активности, сохраняет их в PostgreSQL и возвращает риск академического отставания/оттока. Один и тот же сервис доступен через gRPC и REST; документация REST открывается в Swagger UI.
 
-## Структура
+![CI](https://github.com/rwrwdss/EdtoEd/actions/workflows/ci.yml/badge.svg)
 
-```text
-cmd/server/                    запуск gRPC и HTTP
-api/proto/                    контракт и сгенерированный Go-код
-internal/service/             валидация и обработчик анализа
-internal/features/            порядок и построение признаков
-internal/ml/                  интерфейс предсказателя и проверка файла модели
-internal/storage/             PostgreSQL и начальная SQL-миграция
-ml_research/                  требования к будущему обучению
-models/                       исходный ONNX-артефакт
-Dockerfile, docker-compose.yml
-```
-
-Вход модели `float_input` имеет форму `[N, 3]`: `relative_clicks`, `test_score`, `deadline_delay`. Выход `probabilities` имеет тип `sequence<map<int64,float>>`. Адаптер ONNX должен извлекать вероятность класса оттока из этой структуры. Пока нет медианы кликов по теме, построение признака использует знаменатель `1`; это временный каркас, непригодный для реального прогноза.
-
-## Запуск
+## Быстрый старт
 
 ```bash
 docker compose up --build
 ```
 
-Проверка процесса: `GET http://localhost:8080/healthz`. gRPC доступен на `localhost:50051`. Для локального запуска Go-сервера установите `DATABASE_URL` и при необходимости `MODEL_PATH`, `GRPC_ADDR`, `HTTP_ADDR`. Команда `go run ./cmd/server` требует работающий PostgreSQL.
+После запуска:
 
-`internal/storage/migrations/001_init.sql` применяется при открытии соединения. Для существующих баз с прежней схемой `CREATE TABLE IF NOT EXISTS` не меняет столбцы; перед использованием такой базы нужна отдельная миграция данных.
+- REST API: `http://localhost:8080`
+- Swagger UI: `http://localhost:8080/docs`
+- OpenAPI YAML: `http://localhost:8080/openapi.yaml`
+- gRPC: `localhost:50051`
+- liveness: `GET /healthz`
+- readiness: `GET /readyz`
 
-## Следующие шаги
+Пример REST-запроса:
 
-1. Реализовать агрегирование медианы кликов по теме и зафиксировать те же преобразования в обучении.
-2. Подключить совместимый ONNX Runtime и извлекать вероятность класса оттока.
-3. Добавить источник подтверждённых меток оттока и пайплайн обучения; сырые события без меток для обучения недостаточны.
-4. Определить правила псевдонимизации, хранения и удаления идентификаторов.
-5. Добавить версионированные миграции и механизм обновления модели после проверки новой версии.
+```bash
+curl -X POST http://localhost:8080/v1/analyze \
+  -H 'Content-Type: application/json' \
+  -d '{"student_id":"student_hash_123","topic_id":"algebra_01","clicks_count":24,"test_score":0.72,"deadline_delay":1.5}'
+```
 
-Текущий `docker-compose.yml` предназначен для локальной разработки; пароль базы в нём демонстрационный.
+Ответ содержит `burnout_risk` от `0` до `1`, флаг `requires_action` и действие `KEEP_TRACK` или `OFFER_HINT`.
+
+## Архитектура
+
+```text
+REST /v1/analyze ─┐
+                  ├─ service.Analyzer ── features ── Predictor ── model
+gRPC Analyze ─────┘          │
+                             └────────── PostgreSQL event log
+```
+
+- `api/proto/` — gRPC-контракт и сгенерированные типы.
+- `internal/httpapi/` — REST-маршруты, OpenAPI 3.0 и Swagger UI.
+- `internal/service/` — общая бизнес-логика валидации, сохранения и scoring.
+- `internal/features/` — единый порядок входных признаков.
+- `internal/ml/` — интерфейс predictor и быстрый CGO-free predictor текущей ONNX-модели.
+- `internal/storage/` — PostgreSQL и встроенная миграция.
+- `models/` — ровно одна актуальная модель `edtoed_v1.onnx`.
+- `ml_research/` — воспроизводимое обучение OULAD и отчёты.
+
+## Модель
+
+Текущая модель обучена на OULAD с окном первых 28 дней курса. Входной контракт: `[relative_clicks, test_score, deadline_delay]`. Целевая метка: `Fail`/`Withdrawn` против `Pass`/`Distinction`.
+
+Последний тестовый результат:
+
+| Метрика | Значение |
+|---|---:|
+| ROC-AUC | 0.783 |
+| F1 | 0.720 |
+| Accuracy | 0.708 |
+| Recall | 0.710 |
+
+Модель и preprocessing синхронизированы: клики и задержка проходят устойчивое `tanh`-преобразование и одинаковую нормализацию. Для переобучения:
+
+```bash
+cd ml_research
+python3 train_oulad.py
+cp artifacts/edtoed_oulad_v1.onnx ../models/edtoed_v1.onnx
+```
+
+Сырые данные и кэш Python не входят в Git. Production-папка `models/` не содержит старых версий.
+
+## Конфигурация
+
+| Переменная | По умолчанию | Назначение |
+|---|---|---|
+| `DATABASE_URL` | обязательна | PostgreSQL DSN |
+| `MODEL_PATH` | `models/edtoed_v1.onnx` | проверяемый путь модели |
+| `GRPC_ADDR` | `:50051` | адрес gRPC |
+| `HTTP_ADDR` | `:8080` | адрес REST/Swagger |
+
+## Проверки разработчика
+
+```bash
+go test ./...
+go vet ./...
+gofmt -w $(find . -name '*.go' -not -path './api/proto/*')
+```
+
+GitHub Actions автоматически запускает форматирование, тесты, vet и сборку Docker при каждом push и pull request.
+
+## Ограничения и следующий этап
+
+Текущий predictor повторяет математику опубликованной лёгкой ONNX-модели нативно в Go, поэтому контейнер остаётся быстрым и не требует CGO. Для произвольных будущих ONNX-моделей понадобится отдельный runtime adapter с тем же интерфейсом `ml.Predictor`.
+
+Ближайшие продуктовые шаги: реальные cohort-медианы кликов, подтверждённые production-метки, threshold tuning под стоимость ошибок, versioned model registry, OpenTelemetry и нагрузочные тесты.

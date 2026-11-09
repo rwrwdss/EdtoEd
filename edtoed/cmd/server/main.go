@@ -11,6 +11,7 @@ import (
 	"time"
 
 	pb "edtoed/api/proto"
+	"edtoed/internal/httpapi"
 	"edtoed/internal/ml"
 	"edtoed/internal/service"
 	"edtoed/internal/storage"
@@ -44,7 +45,8 @@ func main() {
 		log.Fatal(err)
 	}
 	server := grpc.NewServer()
-	pb.RegisterEdtoEdServiceServer(server, &service.Analyzer{Store: store, Predictor: ml.UnavailablePredictor{}})
+	analyzer := &service.Analyzer{Store: store, Predictor: ml.NewLinearPredictor()}
+	pb.RegisterEdtoEdServiceServer(server, analyzer)
 	go func() {
 		if err := server.Serve(listener); err != nil {
 			log.Printf("gRPC server stopped: %v", err)
@@ -54,9 +56,7 @@ func main() {
 	if httpAddr == "" {
 		httpAddr = ":8080"
 	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	httpServer := &http.Server{Addr: httpAddr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	httpServer := &http.Server{Addr: httpAddr, Handler: httpapi.Handler{Analyzer: analyzer}.Routes(), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Printf("HTTP server stopped: %v", err)
