@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
-import os
+import hashlib
+import onnxruntime as ort
 import zipfile
 from pathlib import Path
 
@@ -59,7 +59,7 @@ def build_table(root: Path, chunk_size: int = 500_000) -> pd.DataFrame:
         deadline_delay=("date_submitted", lambda s: 0.0),
     )
     delay_rows = submissions.copy()
-    delay_rows["delay"] = np.maximum(delay_rows["date_submitted"] - delay_rows["date"], 0)
+    delay_rows["delay"] = delay_rows["date_submitted"] - delay_rows["date"]
     delays = delay_rows.groupby(["id_student", "code_module", "code_presentation"], as_index=False)["delay"].mean()
     score = score.drop(columns=["deadline_delay"]).merge(
         delays.rename(columns={"delay": "deadline_delay"}),
@@ -76,17 +76,24 @@ def build_table(root: Path, chunk_size: int = 500_000) -> pd.DataFrame:
     click_table = pd.concat(clicks, ignore_index=True)
     click_table = click_table.groupby(["id_student", "code_module", "code_presentation"], as_index=False)["sum_click"].sum()
     click_table = click_table.rename(columns={"sum_click": "clicks"})
-    cohort = click_table.groupby(["code_module", "code_presentation"])["clicks"].median().rename("median_clicks").reset_index()
-    click_table = click_table.merge(cohort, on=["code_module", "code_presentation"], how="left")
-    click_table["relative_clicks"] = click_table["clicks"] / click_table["median_clicks"].replace(0, 1)
-
     table = students[["id_student", "code_module", "code_presentation", "target"]].merge(
-        click_table[["id_student", "code_module", "code_presentation", "relative_clicks"]],
-        on=["id_student", "code_module", "code_presentation"], how="left",
-    ).merge(score, on=["id_student", "code_module", "code_presentation"], how="left")
-    table["relative_clicks"] = table["relative_clicks"].fillna(0.0).clip(0, 100)
-    table["test_score"] = table["test_score"].fillna(0.0).clip(0, 1)
-    table["deadline_delay"] = table["deadline_delay"].fillna(0.0).clip(0, 30)
+        click_table, on=keys, how="left", validate="one_to_one"
+    ).merge(score, on=keys, how="left", validate="one_to_one")
+    table["clicks"] = table["clicks"].fillna(0)
+    table = normalize_cohort(table)
+    table["test_score"] = table["test_score"].fillna(0.0)
+    table["deadline_delay"] = table["deadline_delay"].fillna(0.0)
+    return table
+
+
+def normalize_cohort(table: pd.DataFrame) -> pd.DataFrame:
+    """Match API: include submitted zeros; reject count<2 or zero median."""
+    table = table.copy()
+    group = table.groupby(["code_module", "code_presentation"])["clicks"]
+    table["median_clicks"] = group.transform("median")
+    table["cohort_count"] = group.transform("size")
+    table["scorable"] = (table.median_clicks > 0) & (table.cohort_count >= 2)
+    table["relative_clicks"] = table.clicks / table.median_clicks.where(table.scorable)
     return table
 
 
@@ -117,8 +124,8 @@ def fit_logistic(x: np.ndarray, y: np.ndarray, epochs: int = 2500, lr: float = 0
     return w, float(b), mean, scale
 
 
-def metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
-    pred = (p >= 0.5).astype(int)
+def metrics(y: np.ndarray, p: np.ndarray, threshold: float = 0.5) -> dict[str, float]:
+    pred = (p >= threshold).astype(int)
     tp, tn = int(((pred == 1) & (y == 1)).sum()), int(((pred == 0) & (y == 0)).sum())
     fp, fn = int(((pred == 1) & (y == 0)).sum()), int(((pred == 0) & (y == 1)).sum())
     precision = tp / max(tp + fp, 1)
@@ -184,17 +191,39 @@ def main() -> None:
         with zipfile.ZipFile(args.zip) as zf:
             zf.extractall(args.data)
     table = build_table(args.data)
-    train, valid, test = split_by_student(table)
+    coverage = {"total": len(table), "scorable": int(table.scorable.sum()), "zero_click_students": int((table.clicks == 0).sum())}
+    train, valid, test = split_by_student(table[table.scorable])
     w, b, mean, scale = fit_logistic(transform_features(train), train.target.to_numpy(float))
     def predict(frame: pd.DataFrame) -> np.ndarray:
         return sigmoid(((transform_features(frame) - mean) / scale) @ w + b)
     report = {"dataset": "OULAD", "target": "Fail or Withdrawn", "window_days": 28,
               "protocol": "2013 train / unseen students 2014B validation / unseen students 2014J test; active on day 28; submissions <=28; banked excluded",
-              "limitations": "OULAD previously explored; this is not a new independent dataset. Scores assumed available at submission. Cohort medians use positive-activity participants at day 28. Production normalization still pending.",
+              "limitations": "OULAD previously explored; this is not a new independent dataset. Scores assumed available at submission. Cohort medians include all eligible students, including zeros. Full cohort must be submitted to reproduce normalization. Scores assumed available at submission; historical test has been explored.",
+              "normalization": "eligible roster including zeros; signed delay; no clipping; count>=2 and median>0", "coverage": coverage,
               "features": FEATURES, "rows": int(len(table)), "students": int(table.id_student.nunique()),
               "splits": {"train": metrics(train.target.to_numpy(), predict(train)), "validation": metrics(valid.target.to_numpy(), predict(valid)), "test": metrics(test.target.to_numpy(), predict(test))},
               "normalization_mean": mean.tolist(), "normalization_scale": scale.tolist(), "weights": w.tolist(), "bias": b}
     args.artifact_dir.mkdir(parents=True, exist_ok=True)
+    candidate_path = args.artifact_dir / "edtoed_oulad_v1.onnx"
+    export_onnx(candidate_path, w, b, mean, scale)
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = 1
+    candidate = ort.InferenceSession(str(candidate_path), sess_options=options)
+    incumbent_path = Path("../models/edtoed_v1.onnx")
+    incumbent = ort.InferenceSession(str(incumbent_path), sess_options=options)
+    def run(session, frame):
+        x = frame[FEATURES].to_numpy(np.float32)
+        return np.array([row[1] for row in session.run(["probabilities"], {"float_input": x})[0]])
+    for frame in (valid, test):
+        np.testing.assert_allclose(run(candidate, frame), predict(frame), atol=1e-6)
+    report["incumbent_same_features"] = {name: metrics(frame.target.to_numpy(), run(incumbent, frame)) for name, frame in (("validation", valid), ("test", test))}
+    report["candidate_sha256"] = hashlib.sha256(candidate_path.read_bytes()).hexdigest()
+    report["test_at_service_threshold_0.7"] = metrics(test.target.to_numpy(), run(candidate, test), threshold=0.7)
+    report["incumbent_sha256"] = hashlib.sha256(incumbent_path.read_bytes()).hexdigest()
+    cv, iv = report["splits"]["validation"], report["incumbent_same_features"]["validation"]
+    report["validation_gate"] = {"rule": "AUC drop <=0.01; Brier increase <=0.01; F1 drop <=0.02; parity <=1e-6", "passed": cv["roc_auc"] >= iv["roc_auc"]-.01 and cv["brier"] <= iv["brier"]+.01 and cv["f1"] >= iv["f1"]-.02}
+    probes = pd.DataFrame([[1,.8,0],[0,0,5],[0,.5,-2],[2,1,0]], columns=FEATURES)
+    report["reference_predictions"] = [{"input": row, "risk": float(risk)} for row, risk in zip(probes.values.tolist(), predict(probes))]
     (args.artifact_dir / "oulad_baseline_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     (args.artifact_dir / "oulad_baseline_report.md").write_text("# OULAD baseline\n\n```json\n" + json.dumps(report, indent=2) + "\n```\n", encoding="utf-8")
     export_onnx(args.artifact_dir / "edtoed_oulad_v1.onnx", w, b, mean, scale)

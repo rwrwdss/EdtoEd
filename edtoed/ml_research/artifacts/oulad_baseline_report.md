@@ -6,7 +6,13 @@
   "target": "Fail or Withdrawn",
   "window_days": 28,
   "protocol": "2013 train / unseen students 2014B validation / unseen students 2014J test; active on day 28; submissions <=28; banked excluded",
-  "limitations": "OULAD previously explored; this is not a new independent dataset. Scores assumed available at submission. Cohort medians use positive-activity participants at day 28. Production normalization still pending.",
+  "limitations": "OULAD previously explored; this is not a new independent dataset. Scores assumed available at submission. Cohort medians include all eligible students, including zeros. Full cohort must be submitted to reproduce normalization. Scores assumed available at submission; historical test has been explored.",
+  "normalization": "eligible roster including zeros; signed delay; no clipping; count>=2 and median>0",
+  "coverage": {
+    "total": 27515,
+    "scorable": 27515,
+    "zero_click_students": 1203
+  },
   "features": [
     "relative_clicks",
     "test_score",
@@ -18,61 +24,145 @@
     "train": {
       "n": 11797,
       "positive_rate": 0.4434178180893448,
-      "accuracy": 0.6463507671441892,
-      "precision": 0.5963603275705186,
-      "recall": 0.62645765627987,
-      "f1": 0.6110385977997389,
-      "roc_auc": 0.7037803231782132,
-      "brier": 0.21783126628582053,
-      "tp": 3277,
-      "tn": 4348,
-      "fp": 2218,
-      "fn": 1954
+      "accuracy": 0.6500805289480376,
+      "precision": 0.5975243147656941,
+      "recall": 0.6459567960237048,
+      "f1": 0.6207973544001469,
+      "roc_auc": 0.7111748664633325,
+      "brier": 0.21591323939326207,
+      "tp": 3379,
+      "tn": 4290,
+      "fp": 2276,
+      "fn": 1852
     },
     "validation": {
       "n": 5832,
       "positive_rate": 0.4660493827160494,
       "accuracy": 0.6454046639231824,
-      "precision": 0.6071193144363876,
-      "recall": 0.6777041942604857,
-      "f1": 0.6404728789986092,
-      "roc_auc": 0.7048702529297535,
-      "brier": 0.21974092436148412,
-      "tp": 1842,
-      "tn": 1922,
-      "fp": 1192,
-      "fn": 876
+      "precision": 0.6038338658146964,
+      "recall": 0.695364238410596,
+      "f1": 0.6463748290013679,
+      "roc_auc": 0.7067417412308249,
+      "brier": 0.21980813168260835,
+      "tp": 1890,
+      "tn": 1874,
+      "fp": 1240,
+      "fn": 828
     },
     "test": {
       "n": 7929,
       "positive_rate": 0.3836549375709421,
-      "accuracy": 0.6210114768571068,
-      "precision": 0.504633107938893,
-      "recall": 0.6623931623931624,
-      "f1": 0.5728500355366027,
-      "roc_auc": 0.6912245344388708,
-      "brier": 0.22634299262743166,
-      "tp": 2015,
-      "tn": 2909,
-      "fp": 1978,
-      "fn": 1027
+      "accuracy": 0.6235338630344306,
+      "precision": 0.50718789407314,
+      "recall": 0.6610782380013149,
+      "f1": 0.5739974311402882,
+      "roc_auc": 0.6942088101010517,
+      "brier": 0.22405253758120613,
+      "tp": 2011,
+      "tn": 2933,
+      "fp": 1954,
+      "fn": 1031
     }
   },
   "normalization_mean": [
-    0.46344180264892926,
+    0.471177871130315,
     0.5450864626599866,
-    0.047244429146223246
+    -0.1578374410166167
   ],
   "normalization_scale": [
-    0.29326940131367574,
+    0.29583349261674335,
     0.35048962008972173,
-    0.14932045567739316
+    0.3352419221087409
   ],
   "weights": [
-    -0.546252252462539,
-    -0.357677092833466,
-    0.23744147320126588
+    -0.5379639824402213,
+    -0.2607968823741488,
+    0.2901383515238003
   ],
-  "bias": -0.02543467308809272
+  "bias": -0.03487841001993548,
+  "incumbent_same_features": {
+    "validation": {
+      "n": 5832,
+      "positive_rate": 0.4660493827160494,
+      "accuracy": 0.6550068587105624,
+      "precision": 0.6536118363794604,
+      "recall": 0.5526122148638705,
+      "f1": 0.598883572567783,
+      "roc_auc": 0.7059427551426939,
+      "brier": 0.2216559986804867,
+      "tp": 1502,
+      "tn": 2318,
+      "fp": 796,
+      "fn": 1216
+    },
+    "test": {
+      "n": 7929,
+      "positive_rate": 0.3836549375709421,
+      "accuracy": 0.6582166729726321,
+      "precision": 0.5596264367816092,
+      "recall": 0.5121630506245891,
+      "f1": 0.5348438036388603,
+      "roc_auc": 0.6929176307629347,
+      "brier": 0.2156158432971389,
+      "tp": 1558,
+      "tn": 3661,
+      "fp": 1226,
+      "fn": 1484
+    }
+  },
+  "candidate_sha256": "8b351c69e29e696f42c14678892857bfc4ccb11bc4d3a22f764400b7588d85af",
+  "test_at_service_threshold_0.7": {
+    "n": 7929,
+    "positive_rate": 0.3836549375709421,
+    "accuracy": 0.6773868079202926,
+    "precision": 0.6970684039087948,
+    "recall": 0.28139381985535833,
+    "f1": 0.4009367681498829,
+    "roc_auc": 0.6942088101010517,
+    "brier": 0.22405253991978916,
+    "tp": 856,
+    "tn": 4515,
+    "fp": 372,
+    "fn": 2186
+  },
+  "incumbent_sha256": "06743f7b96f6ff123ee977c7fb07062772e24bb583b39bd643f40ae0bf511bc4",
+  "validation_gate": {
+    "rule": "AUC drop <=0.01; Brier increase <=0.01; F1 drop <=0.02; parity <=1e-6",
+    "passed": true
+  },
+  "reference_predictions": [
+    {
+      "input": [
+        1.0,
+        0.8,
+        0.0
+      ],
+      "risk": 0.4821377956254885
+    },
+    {
+      "input": [
+        0.0,
+        0.0,
+        5.0
+      ],
+      "risk": 0.8832186932389646
+    },
+    {
+      "input": [
+        0.0,
+        0.5,
+        -2.0
+      ],
+      "risk": 0.6599931796913399
+    },
+    {
+      "input": [
+        2.0,
+        1.0,
+        0.0
+      ],
+      "risk": 0.31758609493014395
+    }
+  ]
 }
 ```

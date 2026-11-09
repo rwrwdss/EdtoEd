@@ -19,9 +19,9 @@ Current contract: `float_input` float32 `[N,3]`, output `probabilities` with int
 
 ## Research limitations
 
-Training now filters submissions to day 28, excludes banked assessments and already withdrawn students, and evaluates 2013 → 2014B → 2014J with disjoint students. The new research candidate scores ROC-AUC 0.691, F1 0.573, accuracy 0.621 on 7,929 test enrollments. These figures supersede prior optimistic research claims, but refer to a different population and split. OULAD has already been explored, so external validation remains necessary.
+Training includes zero-click students in cohort medians, signed deadline delays, and no feature clipping. Unscorable cohorts (count<2 or median<=0) are excluded just as the API refuses scoring. All 27,515 eligible OULAD enrollments are scorable, including 1,203 zero-click students.
 
-The candidate remains in `edtoed/ml_research/artifacts/`; the serving model in `models/` has not been promoted or changed. Existing inference reference tests still apply to that serving model. Do not copy a research model into production without parity checks and acceptance criteria.
+The promoted model in `edtoed/models/edtoed_v1.onnx` passed validation comparison and Python/ONNX/Go parity checks. Test ROC-AUC: 0.694, F1: 0.574, accuracy: 0.624 at threshold 0.5. Compared with the previous serving model on identical inputs, recall improved but precision, accuracy and test Brier worsened. At the actual service threshold 0.7, precision is 0.697 and recall 0.281 (F1 0.401). Threshold remains unchanged. OULAD has been explored previously; these are research results, not independent external validation.
 
 The target is academic failure/withdrawal, not measured burnout. API now requires cohort and observation window; it computes the real median from per-student snapshots. See [cohort contract](edtoed/COHORT_API.md) for examples, retry semantics and model compatibility limits.
 
