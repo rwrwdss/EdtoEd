@@ -31,6 +31,15 @@ func TestRuntimeIntegration(t *testing.T) {
 			t.Fatalf("got %v, %v; want %v", got, err, tc.want)
 		}
 	}
+	if err := p.cmd.Process.Kill(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Predict(features.Vector{1, .5, 0}); err == nil {
+		t.Fatal("expected failure for interrupted worker")
+	}
+	if !p.Ready() {
+		t.Fatal("worker did not recover")
+	}
 	path := filepath.Join(t.TempDir(), "broken.onnx")
 	if err := os.WriteFile(path, []byte("broken"), 0600); err != nil {
 		t.Fatal(err)

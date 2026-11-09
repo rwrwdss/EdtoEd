@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	pb "edtoed/api/proto"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,6 +15,13 @@ import (
 
 type testStore struct{}
 type testPredictor struct{}
+type unhealthyPredictor struct{ testPredictor }
+
+func (unhealthyPredictor) Ready() bool { return false }
+
+type unhealthyStore struct{ testStore }
+
+func (unhealthyStore) Ping(context.Context) error { return errors.New("database down") }
 
 func (testPredictor) Predict(features.Vector) (float32, error) { return 0.3, nil }
 
@@ -38,5 +46,24 @@ func TestAnalyzeAndDocsRoutes(t *testing.T) {
 		if res.Code != http.StatusOK {
 			t.Fatalf("%s returned %d", path, res.Code)
 		}
+	}
+}
+
+func TestReadinessAndJSONBoundary(t *testing.T) {
+	for _, a := range []*service.Analyzer{
+		{Store: testStore{}, Predictor: unhealthyPredictor{}},
+		{Store: unhealthyStore{}, Predictor: testPredictor{}},
+	} {
+		res := httptest.NewRecorder()
+		Handler{Analyzer: a}.Routes().ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+		if res.Code != http.StatusServiceUnavailable {
+			t.Fatalf("readiness: %d", res.Code)
+		}
+	}
+	h := Handler{Analyzer: &service.Analyzer{Store: testStore{}, Predictor: testPredictor{}}}.Routes()
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/analyze", strings.NewReader(`{} {}`)))
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("multiple JSON values: %d", res.Code)
 	}
 }

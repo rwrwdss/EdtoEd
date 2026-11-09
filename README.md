@@ -126,6 +126,6 @@ Set `TEST_DATABASE_URL` to a disposable PostgreSQL database to enable storage in
 | `edtoed/ml_research/` | Training code, research candidate and reports |
 | `.github/workflows/` | CI |
 
-Next priorities: external validation, calibrated probabilities and intervention thresholds, authentication and tenant isolation, worker recovery, telemetry and load testing. Readiness currently checks configured components, not live dependency health.
+Next priorities: external validation, authentication and tenant isolation, telemetry and load testing. Readiness runs a live model probe and database ping. If the ONNX worker fails, the request returns Unavailable while the service restarts the worker; the next request can succeed.
 
 Dataset attribution: Kuzilek, Hlosta and Zdrahal, [OULAD](https://doi.org/10.24432/C5KK69), CC BY 4.0. This dataset license does not imply a license for the repository code.

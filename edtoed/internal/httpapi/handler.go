@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"time"
 
 	pb "edtoed/api/proto"
 	"edtoed/internal/service"
@@ -47,6 +50,18 @@ func (h Handler) ready(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, `{"status":"not_ready"}`, http.StatusServiceUnavailable)
 		return
 	}
+	if health, ok := h.Analyzer.Predictor.(interface{ Ready() bool }); ok && !health.Ready() {
+		http.Error(w, "model unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if health, ok := h.Analyzer.Store.(interface{ Ping(context.Context) error }); ok {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := health.Ping(ctx); err != nil {
+			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 
@@ -60,6 +75,11 @@ func (h Handler) analyze(w http.ResponseWriter, r *http.Request) {
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&input); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		http.Error(w, "expected one JSON object", http.StatusBadRequest)
 		return
 	}
 	result, err := h.Analyzer.AnalyzeStudentMetrics(r.Context(), &pb.StudentActivityRequest{

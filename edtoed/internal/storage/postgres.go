@@ -21,6 +21,8 @@ type Storage struct {
 	db *sql.DB
 }
 
+func (s *Storage) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
+
 func NewStorage(connStr string) (*Storage, error) {
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {

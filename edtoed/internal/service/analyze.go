@@ -41,8 +41,6 @@ func (a *Analyzer) AnalyzeStudentMetrics(ctx context.Context, req *pb.StudentAct
 	if err != nil {
 		return nil, status.Error(codes.Internal, "could not save activity")
 	}
-	// The cohort median is not yet available. This fallback is explicit until
-	// the aggregation layer is implemented.
 	if count < 2 || median <= 0 || math.IsNaN(median) || math.IsInf(median, 0) {
 		return nil, status.Error(codes.FailedPrecondition, "snapshot saved; need two students and positive median")
 	}
