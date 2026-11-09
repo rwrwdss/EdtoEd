@@ -19,6 +19,10 @@ Current contract: `float_input` float32 `[N,3]`, output `probabilities` with int
 
 ## Research limitations
 
-The current training pipeline needs a leakage audit: assessment submissions are not filtered by submission date, and model variants were compared on the test split. Published metrics are exploratory, not an independent production-quality estimate. The target is academic failure/withdrawal, not measured burnout. The API still uses a temporary cohort median of 1; production validity requires real cohort normalization.
+Training now filters submissions to day 28, excludes banked assessments and already withdrawn students, and evaluates 2013 → 2014B → 2014J with disjoint students. The new research candidate scores ROC-AUC 0.691, F1 0.573, accuracy 0.621 on 7,929 test enrollments. These figures supersede prior optimistic research claims, but refer to a different population and split. OULAD has already been explored, so external validation remains necessary.
+
+The candidate remains in `edtoed/ml_research/artifacts/`; the serving model in `models/` has not been promoted or changed. Existing inference reference tests still apply to that serving model. Do not copy a research model into production without parity checks and acceptance criteria.
+
+The target is academic failure/withdrawal, not measured burnout. The API still uses a temporary cohort median of 1; production validity requires real cohort normalization. Its event contract lacks cohort and observation-window identifiers, so pooling existing events would not reproduce training features.
 
 See [backend documentation](edtoed/README.md) for endpoints and configuration. Its native predictor description is superseded by the runtime integration above.

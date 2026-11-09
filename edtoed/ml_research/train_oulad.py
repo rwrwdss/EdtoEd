@@ -39,6 +39,12 @@ def build_table(root: Path, chunk_size: int = 500_000) -> pd.DataFrame:
     students = load_csv(root, "studentInfo.csv")
     students = students[students["final_result"].isin(["Fail", "Withdrawn", "Pass", "Distinction"])].copy()
     students["target"] = students["final_result"].isin(["Fail", "Withdrawn"]).astype(np.int64)
+    keys = ["id_student", "code_module", "code_presentation"]
+    registrations = load_csv(root, "studentRegistration.csv")
+    registrations["date_unregistration"] = pd.to_numeric(registrations["date_unregistration"], errors="coerce")
+    registrations["date_registration"] = pd.to_numeric(registrations["date_registration"], errors="coerce")
+    eligible = registrations[(registrations.date_unregistration.isna() | (registrations.date_unregistration > 28)) & (registrations.date_registration <= 28)]
+    students = students.merge(eligible[keys], on=keys, validate="one_to_one")
 
     assessments = load_csv(root, "assessments.csv")
     assessments["date"] = pd.to_numeric(assessments["date"], errors="coerce")
@@ -46,6 +52,7 @@ def build_table(root: Path, chunk_size: int = 500_000) -> pd.DataFrame:
     submissions = load_csv(root, "studentAssessment.csv")
     submissions["score"] = pd.to_numeric(submissions["score"], errors="coerce")
     submissions["date_submitted"] = pd.to_numeric(submissions["date_submitted"], errors="coerce")
+    submissions = submissions[(submissions.date_submitted <= 28) & (submissions.is_banked == 0)]
     submissions = submissions.merge(assessment_window, on="id_assessment", how="inner")
     score = submissions.groupby(["id_student", "code_module", "code_presentation"], as_index=False).agg(
         test_score=("score", lambda s: float(np.clip(s.mean() / 100.0, 0.0, 1.0))),
@@ -84,14 +91,11 @@ def build_table(root: Path, chunk_size: int = 500_000) -> pd.DataFrame:
 
 
 def split_by_student(table: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    ids = table["id_student"].drop_duplicates().to_numpy()
-    rng = np.random.default_rng(42)
-    rng.shuffle(ids)
-    n = len(ids)
-    train_ids, valid_ids = set(ids[: int(n * 0.70)]), set(ids[int(n * 0.70): int(n * 0.85)])
-    train = table[table.id_student.isin(train_ids)]
-    valid = table[table.id_student.isin(valid_ids)]
-    test = table[~table.id_student.isin(train_ids | valid_ids)]
+    # Temporal evaluation, excluding students already observed in earlier splits.
+    train = table[table.code_presentation.str.startswith("2013")]
+    valid = table[(table.code_presentation == "2014B") & ~table.id_student.isin(train.id_student)]
+    test = table[(table.code_presentation == "2014J") & ~table.id_student.isin(pd.concat([train, valid]).id_student)]
+    assert all(len(frame) > 0 for frame in (train, valid, test))
     return train, valid, test
 
 
@@ -119,15 +123,13 @@ def metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
     fp, fn = int(((pred == 1) & (y == 0)).sum()), int(((pred == 0) & (y == 1)).sum())
     precision = tp / max(tp + fp, 1)
     recall = tp / max(tp + fn, 1)
-    order = np.argsort(-p)
-    ys = y[order]
     positives = max(int(y.sum()), 1)
     negatives = max(int(len(y) - y.sum()), 1)
-    tpr = np.cumsum(ys == 1) / positives
-    fpr = np.cumsum(ys == 0) / negatives
-    auc = float(np.trapezoid(np.r_[0, tpr], np.r_[0, fpr]))
+    ranks = pd.Series(p).rank(method="average").to_numpy()
+    auc = float((ranks[y == 1].sum() - positives * (positives + 1) / 2) / (positives * negatives))
     return {"n": int(len(y)), "positive_rate": float(y.mean()), "accuracy": float((pred == y).mean()),
-            "precision": float(precision), "recall": float(recall), "f1": float(2 * precision * recall / max(precision + recall, 1e-12)), "roc_auc": auc}
+            "precision": float(precision), "recall": float(recall), "f1": float(2 * precision * recall / max(precision + recall, 1e-12)), "roc_auc": auc,
+            "brier": float(np.mean((p-y)**2)), "tp": tp, "tn": tn, "fp": fp, "fn": fn}
 
 
 def export_onnx(path: Path, w: np.ndarray, b: float, mean: np.ndarray, scale: np.ndarray) -> None:
@@ -187,6 +189,8 @@ def main() -> None:
     def predict(frame: pd.DataFrame) -> np.ndarray:
         return sigmoid(((transform_features(frame) - mean) / scale) @ w + b)
     report = {"dataset": "OULAD", "target": "Fail or Withdrawn", "window_days": 28,
+              "protocol": "2013 train / unseen students 2014B validation / unseen students 2014J test; active on day 28; submissions <=28; banked excluded",
+              "limitations": "OULAD previously explored; this is not a new independent dataset. Scores assumed available at submission. Cohort medians use positive-activity participants at day 28. Production normalization still pending.",
               "features": FEATURES, "rows": int(len(table)), "students": int(table.id_student.nunique()),
               "splits": {"train": metrics(train.target.to_numpy(), predict(train)), "validation": metrics(valid.target.to_numpy(), predict(valid)), "test": metrics(test.target.to_numpy(), predict(test))},
               "normalization_mean": mean.tolist(), "normalization_scale": scale.tolist(), "weights": w.tolist(), "bias": b}
