@@ -21,10 +21,10 @@ func TestRuntimeIntegration(t *testing.T) {
 		x    features.Vector
 		want float64
 	}{
-		{features.Vector{1, .8, 0}, .4821377956},
-		{features.Vector{0, 0, 5}, .8832186932},
-		{features.Vector{0, .5, -2}, .6599931797},
-		{features.Vector{2, 1, 0}, .3175860949},
+		{features.Vector{1, .8, 0}, .4263506185},
+		{features.Vector{0, 0, 5}, .8588041263},
+		{features.Vector{0, .5, -2}, .6083977804},
+		{features.Vector{2, 1, 0}, .2703960569},
 	} {
 		got, err := p.Predict(tc.x)
 		if err != nil || math.Abs(float64(got)-tc.want) > 1e-6 {

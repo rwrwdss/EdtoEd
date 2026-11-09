@@ -25,6 +25,9 @@ type Analyzer struct {
 	Predictor ml.Predictor
 }
 
+// Selected on the 2014B threshold subset (F2, precision >= 0.6).
+const interventionThreshold float32 = 0.43382675
+
 func (a *Analyzer) AnalyzeStudentMetrics(ctx context.Context, req *pb.StudentActivityRequest) (*pb.AnalyticsResponse, error) {
 	if req == nil || req.StudentId == "" || req.TopicId == "" || req.ClicksCount < 0 || math.IsNaN(float64(req.TestScore)) || req.TestScore < 0 || req.TestScore > 1 || math.IsNaN(float64(req.DeadlineDelay)) || math.IsInf(float64(req.DeadlineDelay), 0) {
 		return nil, status.Error(codes.InvalidArgument, "invalid student activity")
@@ -55,8 +58,8 @@ func (a *Analyzer) AnalyzeStudentMetrics(ctx context.Context, req *pb.StudentAct
 		return nil, status.Error(codes.Internal, "invalid prediction")
 	}
 	action := "KEEP_TRACK"
-	if risk >= 0.7 {
+	if risk >= interventionThreshold {
 		action = "OFFER_HINT"
 	}
-	return &pb.AnalyticsResponse{StudentId: req.StudentId, BurnoutRisk: risk, RequiresAction: risk >= 0.7, ActionType: action}, nil
+	return &pb.AnalyticsResponse{StudentId: req.StudentId, BurnoutRisk: risk, RequiresAction: risk >= interventionThreshold, ActionType: action}, nil
 }

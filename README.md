@@ -79,15 +79,16 @@ Input: `float_input`, float32 `[N,3]`, ordered as `relative_clicks`, `test_score
 
 Training uses OULAD course days 0–28 inclusive, a zero-inclusive cohort median and signed deadline delays. Train: 2013; validation: 2014B; test: 2014J, excluding repeated students across splits.
 
-| Test metric | Threshold 0.5 | Service threshold 0.7 |
+| Test metric | Previous model at 0.7 | Calibrated model at 0.434 |
 |---|---:|---:|
 | ROC-AUC | 0.694 | 0.694 |
-| Precision | 0.507 | 0.697 |
-| Recall | 0.661 | 0.281 |
-| F1 | 0.574 | 0.401 |
-| Accuracy | 0.624 | 0.677 |
+| Precision | 0.697 | 0.502 |
+| Recall | 0.281 | 0.681 |
+| F1 | 0.401 | 0.578 |
+| Accuracy | 0.677 | 0.618 |
+| Brier | 0.224 | 0.215 |
 
-Test set: 7,929 enrollments. Compared with the prior model on identical inputs, recall improved while accuracy and Brier score worsened. OULAD has already been explored; these results are not independent external validation. Arbitrary LMS windows are accepted by the API, but model accuracy outside the training domain is unverified.
+Test set: 7,929 enrollments. Platt calibration used 2,923 validation enrollments; a disjoint set of 2,909 selected the threshold by maximizing F2 subject to precision ≥ 0.60 on that selection set. The test precision is 0.502: the validation floor does not guarantee the same precision on later cohorts. Missed risk cases fell from 2,186 to 969; false alarms rose from 372 to 2,059. Calibration Brier improved on its own fit subset from 0.2193 to 0.2163. This remains exploratory on previously inspected OULAD; external validation is needed.
 
 [Evaluation report](edtoed/ml_research/artifacts/oulad_baseline_report.md) · [Training guide](edtoed/ml_research/README.md)
 

@@ -124,6 +124,41 @@ def fit_logistic(x: np.ndarray, y: np.ndarray, epochs: int = 2500, lr: float = 0
     return w, float(b), mean, scale
 
 
+def calibrate(logits: np.ndarray, y: np.ndarray) -> tuple[float, float]:
+    """Fit a monotone Platt map on calibration students only."""
+    z = (logits - logits.mean()) / max(logits.std(), 1e-8)
+    slope, intercept = 0.0, 0.0
+    for _ in range(4000):
+        error = sigmoid(slope * z + intercept) - y
+        slope -= .05 * (np.mean(error * z) + .001 * slope)
+        intercept -= .05 * np.mean(error)
+    a = slope / max(logits.std(), 1e-8)
+    c = intercept - a * logits.mean()
+    if a <= 0:
+        raise ValueError("Calibration reversed risk ordering")
+    return float(a), float(c)
+
+
+def choose_threshold(y: np.ndarray, p: np.ndarray) -> tuple[float, dict]:
+    """Maximize F2 subject to precision >= 0.6 on threshold students."""
+    candidates = np.unique(np.r_[.05, .95, np.quantile(p, np.linspace(0, 1, 501))])
+    best = None
+    for threshold in candidates:
+        pred = p >= threshold
+        tp = np.sum(pred & (y == 1))
+        precision = tp / max(pred.sum(), 1)
+        recall = tp / max(np.sum(y == 1), 1)
+        if precision < .6:
+            continue
+        f2 = 5 * precision * recall / max(4 * precision + recall, 1e-12)
+        candidate = (f2, recall, -threshold)
+        if best is None or candidate > best[0]:
+            best = candidate, float(threshold), {"precision": float(precision), "recall": float(recall), "f2": float(f2)}
+    if best is None:
+        raise ValueError("No threshold meets the precision floor")
+    return best[1], best[2]
+
+
 def metrics(y: np.ndarray, p: np.ndarray, threshold: float = 0.5) -> dict[str, float]:
     pred = (p >= threshold).astype(int)
     tp, tn = int(((pred == 1) & (y == 1)).sum()), int(((pred == 0) & (y == 0)).sum())
@@ -194,18 +229,20 @@ def main() -> None:
     coverage = {"total": len(table), "scorable": int(table.scorable.sum()), "zero_click_students": int((table.clicks == 0).sum())}
     train, valid, test = split_by_student(table[table.scorable])
     w, b, mean, scale = fit_logistic(transform_features(train), train.target.to_numpy(float))
-    def predict(frame: pd.DataFrame) -> np.ndarray:
-        return sigmoid(((transform_features(frame) - mean) / scale) @ w + b)
-    report = {"dataset": "OULAD", "target": "Fail or Withdrawn", "window_days": 28,
-              "protocol": "2013 train / unseen students 2014B validation / unseen students 2014J test; active on day 28; submissions <=28; banked excluded",
-              "limitations": "OULAD previously explored; this is not a new independent dataset. Scores assumed available at submission. Cohort medians include all eligible students, including zeros. Full cohort must be submitted to reproduce normalization. Scores assumed available at submission; historical test has been explored.",
-              "normalization": "eligible roster including zeros; signed delay; no clipping; count>=2 and median>0", "coverage": coverage,
-              "features": FEATURES, "rows": int(len(table)), "students": int(table.id_student.nunique()),
-              "splits": {"train": metrics(train.target.to_numpy(), predict(train)), "validation": metrics(valid.target.to_numpy(), predict(valid)), "test": metrics(test.target.to_numpy(), predict(test))},
-              "normalization_mean": mean.tolist(), "normalization_scale": scale.tolist(), "weights": w.tolist(), "bias": b}
+    # Disjoint student subsets within 2014B: calibration then policy selection.
+    ids = np.random.default_rng(2026).permutation(valid.id_student.unique())
+    calibration = valid[valid.id_student.isin(ids[:len(ids)//2])]
+    selection = valid[~valid.id_student.isin(ids[:len(ids)//2])]
+    def raw_logit(frame):
+        return ((transform_features(frame) - mean) / scale) @ w + b
+    a, c = calibrate(raw_logit(calibration), calibration.target.to_numpy())
+    calibrated_w, calibrated_b = a*w, a*b+c
+    def predict(frame):
+        return sigmoid(a*raw_logit(frame)+c)
+    threshold, selected = choose_threshold(selection.target.to_numpy(), predict(selection))
     args.artifact_dir.mkdir(parents=True, exist_ok=True)
     candidate_path = args.artifact_dir / "edtoed_oulad_v1.onnx"
-    export_onnx(candidate_path, w, b, mean, scale)
+    export_onnx(candidate_path, calibrated_w, calibrated_b, mean, scale)
     options = ort.SessionOptions()
     options.intra_op_num_threads = 1
     candidate = ort.InferenceSession(str(candidate_path), sess_options=options)
@@ -214,19 +251,34 @@ def main() -> None:
     def run(session, frame):
         x = frame[FEATURES].to_numpy(np.float32)
         return np.array([row[1] for row in session.run(["probabilities"], {"float_input": x})[0]])
-    for frame in (valid, test):
+    for frame in (calibration, selection, test):
         np.testing.assert_allclose(run(candidate, frame), predict(frame), atol=1e-6)
-    report["incumbent_same_features"] = {name: metrics(frame.target.to_numpy(), run(incumbent, frame)) for name, frame in (("validation", valid), ("test", test))}
-    report["candidate_sha256"] = hashlib.sha256(candidate_path.read_bytes()).hexdigest()
-    report["test_at_service_threshold_0.7"] = metrics(test.target.to_numpy(), run(candidate, test), threshold=0.7)
-    report["incumbent_sha256"] = hashlib.sha256(incumbent_path.read_bytes()).hexdigest()
-    cv, iv = report["splits"]["validation"], report["incumbent_same_features"]["validation"]
-    report["validation_gate"] = {"rule": "AUC drop <=0.01; Brier increase <=0.01; F1 drop <=0.02; parity <=1e-6", "passed": cv["roc_auc"] >= iv["roc_auc"]-.01 and cv["brier"] <= iv["brier"]+.01 and cv["f1"] >= iv["f1"]-.02}
-    probes = pd.DataFrame([[1,.8,0],[0,0,5],[0,.5,-2],[2,1,0]], columns=FEATURES)
-    report["reference_predictions"] = [{"input": row, "risk": float(risk)} for row, risk in zip(probes.values.tolist(), predict(probes))]
+    report = {
+        "dataset": "OULAD", "target": "Fail or Withdrawn", "window_days": 28,
+        "protocol": "2013 train; disjoint 2014B calibration and threshold selection students; unseen 2014J test",
+        "normalization": "all eligible roster including zero clicks; signed delays",
+        "coverage": coverage, "features": FEATURES,
+        "calibration": {"method": "Platt", "n": len(calibration), "a": a, "c": c,
+                        "brier_before": metrics(calibration.target.to_numpy(), sigmoid(raw_logit(calibration)))["brier"],
+                        "brier_after": metrics(calibration.target.to_numpy(), predict(calibration))["brier"]},
+        "threshold_selection": {"n": len(selection), "objective": "max F2 with precision >= 0.6",
+                                "threshold": threshold, **selected},
+        "test": {
+            "previous_at_0_7": metrics(test.target.to_numpy(), run(incumbent, test), .7),
+            "candidate_at_0_7": metrics(test.target.to_numpy(), run(candidate, test), .7),
+            "candidate_selected": metrics(test.target.to_numpy(), run(candidate, test), threshold),
+        },
+        "candidate_sha256": hashlib.sha256(candidate_path.read_bytes()).hexdigest(),
+        "incumbent_sha256": hashlib.sha256(incumbent_path.read_bytes()).hexdigest(),
+        "reference_predictions": [
+            {"input": row, "risk": float(risk)}
+            for row, risk in zip([[1,.8,0],[0,0,5],[0,.5,-2],[2,1,0]],
+                                 predict(pd.DataFrame([[1,.8,0],[0,0,5],[0,.5,-2],[2,1,0]], columns=FEATURES)))
+        ],
+        "limitations": "Research dataset previously explored. No independent external validation. Threshold selected for recall with precision floor; interventions may increase."
+    }
     (args.artifact_dir / "oulad_baseline_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     (args.artifact_dir / "oulad_baseline_report.md").write_text("# OULAD baseline\n\n```json\n" + json.dumps(report, indent=2) + "\n```\n", encoding="utf-8")
-    export_onnx(args.artifact_dir / "edtoed_oulad_v1.onnx", w, b, mean, scale)
     print(json.dumps(report, indent=2))
 
 

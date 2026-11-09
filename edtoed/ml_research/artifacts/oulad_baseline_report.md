@@ -5,9 +5,8 @@
   "dataset": "OULAD",
   "target": "Fail or Withdrawn",
   "window_days": 28,
-  "protocol": "2013 train / unseen students 2014B validation / unseen students 2014J test; active on day 28; submissions <=28; banked excluded",
-  "limitations": "OULAD previously explored; this is not a new independent dataset. Scores assumed available at submission. Cohort medians include all eligible students, including zeros. Full cohort must be submitted to reproduce normalization. Scores assumed available at submission; historical test has been explored.",
-  "normalization": "eligible roster including zeros; signed delay; no clipping; count>=2 and median>0",
+  "protocol": "2013 train; disjoint 2014B calibration and threshold selection students; unseen 2014J test",
+  "normalization": "all eligible roster including zero clicks; signed delays",
   "coverage": {
     "total": 27515,
     "scorable": 27515,
@@ -18,151 +17,102 @@
     "test_score",
     "deadline_delay"
   ],
-  "rows": 27515,
-  "students": 24826,
-  "splits": {
-    "train": {
-      "n": 11797,
-      "positive_rate": 0.4434178180893448,
-      "accuracy": 0.6500805289480376,
-      "precision": 0.5975243147656941,
-      "recall": 0.6459567960237048,
-      "f1": 0.6207973544001469,
-      "roc_auc": 0.7111748664633325,
-      "brier": 0.21591323939326207,
-      "tp": 3379,
-      "tn": 4290,
-      "fp": 2276,
-      "fn": 1852
-    },
-    "validation": {
-      "n": 5832,
-      "positive_rate": 0.4660493827160494,
-      "accuracy": 0.6454046639231824,
-      "precision": 0.6038338658146964,
-      "recall": 0.695364238410596,
-      "f1": 0.6463748290013679,
-      "roc_auc": 0.7067417412308249,
-      "brier": 0.21980813168260835,
-      "tp": 1890,
-      "tn": 1874,
-      "fp": 1240,
-      "fn": 828
-    },
-    "test": {
+  "calibration": {
+    "method": "Platt",
+    "n": 2923,
+    "a": 1.0035326548158112,
+    "c": -0.22502457262506537,
+    "brier_before": 0.21930909302788967,
+    "brier_after": 0.21627354954477837
+  },
+  "threshold_selection": {
+    "n": 2909,
+    "objective": "max F2 with precision >= 0.6",
+    "threshold": 0.43382675257859665,
+    "precision": 0.6001259445843828,
+    "recall": 0.706973293768546,
+    "f2": 0.6826647564469915
+  },
+  "test": {
+    "previous_at_0_7": {
       "n": 7929,
       "positive_rate": 0.3836549375709421,
-      "accuracy": 0.6235338630344306,
-      "precision": 0.50718789407314,
-      "recall": 0.6610782380013149,
-      "f1": 0.5739974311402882,
+      "accuracy": 0.6773868079202926,
+      "precision": 0.6970684039087948,
+      "recall": 0.28139381985535833,
+      "f1": 0.4009367681498829,
       "roc_auc": 0.6942088101010517,
-      "brier": 0.22405253758120613,
-      "tp": 2011,
-      "tn": 2933,
-      "fp": 1954,
-      "fn": 1031
-    }
-  },
-  "normalization_mean": [
-    0.471177871130315,
-    0.5450864626599866,
-    -0.1578374410166167
-  ],
-  "normalization_scale": [
-    0.29583349261674335,
-    0.35048962008972173,
-    0.3352419221087409
-  ],
-  "weights": [
-    -0.5379639824402213,
-    -0.2607968823741488,
-    0.2901383515238003
-  ],
-  "bias": -0.03487841001993548,
-  "incumbent_same_features": {
-    "validation": {
-      "n": 5832,
-      "positive_rate": 0.4660493827160494,
-      "accuracy": 0.6550068587105624,
-      "precision": 0.6536118363794604,
-      "recall": 0.5526122148638705,
-      "f1": 0.598883572567783,
-      "roc_auc": 0.7059427551426939,
-      "brier": 0.2216559986804867,
-      "tp": 1502,
-      "tn": 2318,
-      "fp": 796,
-      "fn": 1216
+      "brier": 0.22405253991978916,
+      "tp": 856,
+      "tn": 4515,
+      "fp": 372,
+      "fn": 2186
     },
-    "test": {
+    "candidate_at_0_7": {
       "n": 7929,
       "positive_rate": 0.3836549375709421,
-      "accuracy": 0.6582166729726321,
-      "precision": 0.5596264367816092,
-      "recall": 0.5121630506245891,
-      "f1": 0.5348438036388603,
-      "roc_auc": 0.6929176307629347,
-      "brier": 0.2156158432971389,
-      "tp": 1558,
-      "tn": 3661,
-      "fp": 1226,
-      "fn": 1484
+      "accuracy": 0.6699457686971876,
+      "precision": 0.7652933832709113,
+      "recall": 0.20151216305062458,
+      "f1": 0.3190215977101223,
+      "roc_auc": 0.6942088101010517,
+      "brier": 0.21459394099171802,
+      "tp": 613,
+      "tn": 4699,
+      "fp": 188,
+      "fn": 2429
+    },
+    "candidate_selected": {
+      "n": 7929,
+      "positive_rate": 0.3836549375709421,
+      "accuracy": 0.6181107327531845,
+      "precision": 0.5016940948693127,
+      "recall": 0.6814595660749507,
+      "f1": 0.5779202676331197,
+      "roc_auc": 0.6942088101010517,
+      "brier": 0.21459394099171802,
+      "tp": 2073,
+      "tn": 2828,
+      "fp": 2059,
+      "fn": 969
     }
   },
-  "candidate_sha256": "8b351c69e29e696f42c14678892857bfc4ccb11bc4d3a22f764400b7588d85af",
-  "test_at_service_threshold_0.7": {
-    "n": 7929,
-    "positive_rate": 0.3836549375709421,
-    "accuracy": 0.6773868079202926,
-    "precision": 0.6970684039087948,
-    "recall": 0.28139381985535833,
-    "f1": 0.4009367681498829,
-    "roc_auc": 0.6942088101010517,
-    "brier": 0.22405253991978916,
-    "tp": 856,
-    "tn": 4515,
-    "fp": 372,
-    "fn": 2186
-  },
-  "incumbent_sha256": "06743f7b96f6ff123ee977c7fb07062772e24bb583b39bd643f40ae0bf511bc4",
-  "validation_gate": {
-    "rule": "AUC drop <=0.01; Brier increase <=0.01; F1 drop <=0.02; parity <=1e-6",
-    "passed": true
-  },
+  "candidate_sha256": "b5abee3a730568574f4d2cf8020d3fa1e75f4257b88af50d391cce9f12de6487",
+  "incumbent_sha256": "8b351c69e29e696f42c14678892857bfc4ccb11bc4d3a22f764400b7588d85af",
   "reference_predictions": [
     {
       "input": [
-        1.0,
+        1,
         0.8,
-        0.0
+        0
       ],
-      "risk": 0.4821377956254885
+      "risk": 0.4263506185439953
     },
     {
       "input": [
-        0.0,
-        0.0,
-        5.0
+        0,
+        0,
+        5
       ],
-      "risk": 0.8832186932389646
+      "risk": 0.8588041263023565
     },
     {
       "input": [
-        0.0,
+        0,
         0.5,
-        -2.0
+        -2
       ],
-      "risk": 0.6599931796913399
+      "risk": 0.6083977804216516
     },
     {
       "input": [
-        2.0,
-        1.0,
-        0.0
+        2,
+        1,
+        0
       ],
-      "risk": 0.31758609493014395
+      "risk": 0.27039605685500046
     }
-  ]
+  ],
+  "limitations": "Research dataset previously explored. No independent external validation. Threshold selected for recall with precision floor; interventions may increase."
 }
 ```

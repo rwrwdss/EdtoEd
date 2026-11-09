@@ -21,6 +21,23 @@ func (s storeStub) SnapshotMedian(context.Context, *pb.StudentActivityRequest) (
 type capture struct{ v features.Vector }
 
 func (p *capture) Predict(v features.Vector) (float32, error) { p.v = v; return .2, nil }
+
+type fixedRisk float32
+
+func (p fixedRisk) Predict(features.Vector) (float32, error) { return float32(p), nil }
+func TestInterventionThreshold(t *testing.T) {
+	r := &pb.StudentActivityRequest{StudentId: "s", TopicId: "t", CohortId: "c", WindowStart: 1, WindowEnd: 2, ClicksCount: 30, TestScore: .5}
+	a := Analyzer{Store: storeStub{20, 3}, Predictor: fixedRisk(interventionThreshold - .001)}
+	below, err := a.AnalyzeStudentMetrics(context.Background(), r)
+	if err != nil || below.RequiresAction || below.ActionType != "KEEP_TRACK" {
+		t.Fatalf("below: %v %v", below, err)
+	}
+	a.Predictor = fixedRisk(interventionThreshold)
+	above, err := a.AnalyzeStudentMetrics(context.Background(), r)
+	if err != nil || !above.RequiresAction || above.ActionType != "OFFER_HINT" {
+		t.Fatalf("above: %v %v", above, err)
+	}
+}
 func TestCohortNormalization(t *testing.T) {
 	p := &capture{}
 	a := Analyzer{Store: storeStub{20, 3}, Predictor: p}
