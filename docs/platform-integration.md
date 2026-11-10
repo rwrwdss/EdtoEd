@@ -4,7 +4,17 @@ EdtoEd is a standalone scoring service for online schools, course platforms, and
 
 ## Run the synthetic pilot
 
-Start EdtoEd with Docker Compose from `edtoed/`. Then, from the repository root, run:
+From the repository root, create a development key and start EdtoEd:
+
+```sh
+umask 077
+export EDTOED_API_KEY="$(openssl rand -hex 32)"
+digest="$(printf '%s' "$EDTOED_API_KEY" | openssl dgst -sha256 -r | cut -d ' ' -f 1)"
+printf '[{"organization_id":"demo-org","sha256":"%s"}]\n' "$digest" > edtoed/keys.local.json
+(cd edtoed && docker compose up --build -d)
+```
+
+When `/readyz` returns 200, run:
 
 ```sh
 python3 examples/platform-pilot.py --url http://localhost:8080
@@ -18,7 +28,7 @@ The script needs only the Python standard library and a running EdtoEd instance.
 |---|---|
 | Stable, pseudonymous learner identifier | `student_id` |
 | Course or unit identifier at the scoring granularity | `topic_id` |
-| Course run or group, scoped by platform or organization | `cohort_id` |
+| Course run or group within the authenticated organization | `cohort_id` |
 | Shared, completed observation period | `window_start`, `window_end` in Unix seconds |
 | Activity count over that period | `clicks_count`, including zero for inactive learners |
 | Assessment result and submission timing | `test_score` in [0, 1], `deadline_delay` in days; negative means early |
@@ -35,6 +45,10 @@ The current endpoint writes and scores one snapshot per call. It has no separate
 
 ## Deployment boundary
 
-For a pilot, run a separate EdtoEd instance and database per platform or organization, with access restricted to its backend on a private network. The current API does not enforce authentication or tenant isolation. A namespaced cohort identifier avoids accidental collisions but does not authorize callers. A shared deployment needs authenticated organization identity and storage isolation.
+The operator issues a random 256-bit key to each platform backend. Keep the raw key in the platform's secret store. EdtoEd loads `EDTOED_KEYS_FILE` on startup: a JSON array of entries with a stable `organization_id` and `sha256` (the SHA-256 hex digest of the key string, with no newline). Different keys can map to the same organization; a digest cannot be assigned twice. To rotate keys, add the new digest under the same organization ID, restart, switch the client, then remove the old digest and restart again.
+
+Send `Authorization: Bearer <key>` with REST requests, or lowercase `authorization` metadata with the same value in gRPC. Missing or invalid keys return HTTP 401 or gRPC `Unauthenticated`. The server takes the organization from the key; IDs in the request cannot select a different organization. Each organization has its own snapshots and cohort medians, even when IDs overlap. Health probes and API docs remain accessible without a key.
+
+Use TLS at your HTTP/gRPC ingress and keep the backend ports private. Compose binds both published ports to localhost. This deployment shares the service and database; isolation is enforced on authenticated API calls, not between operators with direct database access. Previous snapshots without verified ownership remain in their original table and are excluded from scoring; re-submit them under the correct organization's key.
 
 The demo verifies integration mechanics. To validate predictions before using them for real interventions, run a pilot on historical labeled outcomes from the platform and measure missed cases and false alerts at the serving threshold.

@@ -2,11 +2,11 @@
 
 Both REST and gRPC require `cohort_id`, `window_start` and `window_end`.
 Window timestamps are Unix seconds: [start,end), end must be in the past.
-Identifiers are integration-defined, independent of LMS vendor. Namespace cohort IDs by organization/source. This naming convention does not replace authentication or tenant isolation.
+Identifiers are integration-defined. Send a platform bearer key via the REST `Authorization` header or gRPC `authorization` metadata. The key determines the organization; request IDs are scoped within it.
 
 Send one cumulative snapshot per student/topic/cohort/window. `clicks_count` is the total in that window, not an event delta. Retries replace the same row; the last committed snapshot wins. Submit zero-click students explicitly. Send scores in [0,1] and deadline delay in days from that same observation window.
 
-Median includes all submitted students, including zeros, and the current snapshot. It is scoped to the exact cohort/topic/window. Even-sized cohorts use the mean of the central pair. A transactional advisory lock serializes updates within that scope. Existing legacy logs are retained but excluded because they lack cohort/window attribution.
+Median includes all submitted students, including zeros, and the current snapshot. It is scoped to the exact organization/cohort/topic/window. Even-sized cohorts use the mean of the central pair. A transactional advisory lock serializes updates within that scope. Legacy snapshots and logs are retained but excluded because they lack verified organization ownership.
 
 The first snapshot and a zero-median cohort produce HTTP 409 / gRPC FailedPrecondition after persistence. Submit the rest of the cohort and retry scoring. Predictions may change while the cohort is being populated; full-roster completeness is the integrator's responsibility. There is no hidden denominator fallback.
 

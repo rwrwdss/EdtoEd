@@ -24,13 +24,7 @@ EdtoEd is a research-stage integration module. The model predicts academic failu
 
 ## Quick start
 
-Requires Docker with Compose.
-
-```sh
-git clone https://github.com/rwrwdss/EdtoEd.git
-cd EdtoEd/edtoed
-docker compose up --build
-```
+Requires Docker with Compose. Create a local key registry and start the service using the [pilot setup](docs/platform-integration.md#run-the-synthetic-pilot).
 
 | Interface | Address |
 |---|---|
@@ -50,11 +44,12 @@ Send cumulative activity for the same completed window, not individual click del
 for student in student-1 student-2; do
   curl -sS http://localhost:8080/v1/analyze \
     -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $EDTOED_API_KEY" \
     -d "{\"student_id\":\"$student\",\"topic_id\":\"module-1\",\"cohort_id\":\"orgA-course1-group1\",\"window_start\":1704067200,\"window_end\":1706486400,\"clicks_count\":24,\"test_score\":0.72,\"deadline_delay\":1.5}"
 done
 ```
 
-Repeat a student's request after submitting the full cohort to score against its complete median. Retries replace that student's aggregate. Include students with zero clicks. Cohort IDs should be namespaced by organization; this does not provide authorization or tenant isolation.
+Repeat a student's request after submitting the full cohort to score against its complete median. Retries replace that student's aggregate. Include students with zero clicks. The bearer key scopes cohort IDs and scoring to its organization.
 
 See the [aggregate contract](edtoed/COHORT_API.md) for window boundaries, units and retry behavior.
 
@@ -97,6 +92,7 @@ Test set: 7,929 enrollments. Platt calibration used 2,923 validation enrollments
 | Variable | Default / requirement |
 |---|---|
 | `DATABASE_URL` | Required PostgreSQL DSN |
+| `EDTOED_KEYS_FILE` | Required path to the key registry |
 | `MODEL_PATH` | `models/edtoed_v1.onnx` |
 | `PYTHON_BIN` | `python3`; may point to a virtual environment |
 | `HTTP_ADDR` | `:8080` |
@@ -126,6 +122,6 @@ Set `TEST_DATABASE_URL` to a disposable PostgreSQL database to enable storage in
 | `edtoed/ml_research/` | Training code, research candidate and reports |
 | `.github/workflows/` | CI |
 
-Readiness runs a live model probe and database ping. See [CONTRIBUTING.md](CONTRIBUTING.md) for local checks and commit conventions. Next priorities: external validation, authentication and tenant isolation, telemetry, and load testing.
+Readiness runs a live model probe and database ping. See [CONTRIBUTING.md](CONTRIBUTING.md) for local checks and commit conventions. Next priorities: external validation, telemetry, and load testing.
 
 Dataset attribution: Kuzilek, Hlosta and Zdrahal, [OULAD](https://doi.org/10.24432/C5KK69), CC BY 4.0. This dataset license does not imply a license for the repository code.

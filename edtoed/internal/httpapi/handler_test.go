@@ -2,13 +2,16 @@ package httpapi
 
 import (
 	"context"
-	pb "edtoed/api/proto"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	pb "edtoed/api/proto"
+	"edtoed/internal/auth"
 	"edtoed/internal/features"
 	"edtoed/internal/service"
 )
@@ -33,16 +36,33 @@ func (unhealthyStore) Ping(context.Context) error { return errors.New("database 
 
 func (testPredictor) Predict(context.Context, features.Vector) (float32, error) { return 0.3, nil }
 
-func (testStore) SnapshotMedian(context.Context, *pb.StudentActivityRequest) (float64, int, error) {
+func (testStore) SnapshotMedian(context.Context, string, *pb.StudentActivityRequest) (float64, int, error) {
 	return 5, 2, nil
 }
 
+func analysisHandler(t *testing.T, analyzer *service.Analyzer) (http.Handler, string) {
+	t.Helper()
+	token := strings.Repeat("a", 64)
+	registry := fmt.Sprintf(`[{"organization_id":"platform","sha256":"%x"}]`, sha256.Sum256([]byte(token)))
+	keys, err := auth.Load(strings.NewReader(registry))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return Handler{Analyzer: analyzer, Keys: keys}.Routes(), "Bearer " + token
+}
+
 func TestAnalyzeAndDocsRoutes(t *testing.T) {
-	h := Handler{Analyzer: &service.Analyzer{Store: testStore{}, Predictor: testPredictor{}}}.Routes()
+	h, authorization := analysisHandler(t, &service.Analyzer{Store: testStore{}, Predictor: testPredictor{}})
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/analyze", strings.NewReader(`{"cohort_id":"c","window_start":1,"window_end":2,"student_id":"s1","topic_id":"t1","clicks_count":10,"test_score":0.8,"deadline_delay":0}`))
 	req.Header.Set("Content-Type", "application/json")
 	res := httptest.NewRecorder()
+	h.ServeHTTP(res, req)
+	if res.Code != http.StatusUnauthorized {
+		t.Fatalf("missing credentials: status %d", res.Code)
+	}
+	req.Header.Set("Authorization", authorization)
+	res = httptest.NewRecorder()
 	h.ServeHTTP(res, req)
 	if res.Code != http.StatusOK || !strings.Contains(res.Body.String(), `"burnout_risk"`) {
 		t.Fatalf("unexpected analyze response: %d %s", res.Code, res.Body.String())
@@ -68,19 +88,23 @@ func TestReadinessAndJSONBoundary(t *testing.T) {
 			t.Fatalf("readiness: %d", res.Code)
 		}
 	}
-	h := Handler{Analyzer: &service.Analyzer{Store: testStore{}, Predictor: testPredictor{}}}.Routes()
+	h, authorization := analysisHandler(t, &service.Analyzer{Store: testStore{}, Predictor: testPredictor{}})
 	res := httptest.NewRecorder()
-	h.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/analyze", strings.NewReader(`{} {}`)))
+	req := httptest.NewRequest(http.MethodPost, "/v1/analyze", strings.NewReader(`{} {}`))
+	req.Header.Set("Authorization", authorization)
+	h.ServeHTTP(res, req)
 	if res.Code != http.StatusBadRequest {
 		t.Fatalf("multiple JSON values: %d", res.Code)
 	}
 }
 
 func TestAnalyzeReportsInferenceTimeout(t *testing.T) {
-	h := Handler{Analyzer: &service.Analyzer{Store: testStore{}, Predictor: timedOutPredictor{}}}.Routes()
+	h, authorization := analysisHandler(t, &service.Analyzer{Store: testStore{}, Predictor: timedOutPredictor{}})
 	body := `{"cohort_id":"c","window_start":1,"window_end":2,"student_id":"s","topic_id":"t","clicks_count":10,"test_score":0.8,"deadline_delay":0}`
 	res := httptest.NewRecorder()
-	h.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/analyze", strings.NewReader(body)))
+	req := httptest.NewRequest(http.MethodPost, "/v1/analyze", strings.NewReader(body))
+	req.Header.Set("Authorization", authorization)
+	h.ServeHTTP(res, req)
 	if res.Code != http.StatusGatewayTimeout {
 		t.Fatalf("status %d: %s", res.Code, res.Body.String())
 	}

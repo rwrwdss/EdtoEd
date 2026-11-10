@@ -29,6 +29,8 @@ paths:
     post:
       summary: Score student activity
       operationId: analyzeStudentMetrics
+      security:
+        - platformKey: []
       requestBody:
         required: true
         content:
@@ -42,10 +44,16 @@ paths:
               schema: {$ref: '#/components/schemas/AnalyticsResponse'}
         '409': {description: Snapshot saved but cohort needs two students and positive median}
         '400': {description: Invalid request}
+        '401': {description: Missing or invalid platform bearer key}
         '408': {description: Request canceled}
         '503': {description: Model or dependency unavailable}
         '504': {description: Analysis deadline exceeded; the snapshot may already be saved}
 components:
+  securitySchemes:
+    platformKey:
+      type: http
+      scheme: bearer
+      description: Platform API key issued by the EdtoEd operator.
   schemas:
     StudentActivityRequest:
       type: object
@@ -82,6 +90,8 @@ func grpcCodeToHTTP(err error) int {
 	switch status.Code(err).String() {
 	case "InvalidArgument":
 		return http.StatusBadRequest
+	case "Unauthenticated":
+		return http.StatusUnauthorized
 	case "FailedPrecondition":
 		return http.StatusConflict
 	case "Unavailable":

@@ -1,12 +1,12 @@
 package storage
 
 import (
-	"context"
-	pb "edtoed/api/proto"
 	"fmt"
 	"os"
 	"testing"
 	"time"
+
+	pb "edtoed/api/proto"
 )
 
 func TestSnapshotMedianIntegration(t *testing.T) {
@@ -20,11 +20,12 @@ func TestSnapshotMedianIntegration(t *testing.T) {
 	}
 	defer s.Close()
 	cohort := fmt.Sprintf("test-%d", time.Now().UnixNano())
-	defer s.db.Exec(`DELETE FROM activity_snapshots WHERE cohort_id=$1`, cohort)
+	defer s.db.Exec(`DELETE FROM organization_activity_snapshots WHERE cohort_id=$1`, cohort)
+	org := "platform-a"
 	r := &pb.StudentActivityRequest{CohortId: cohort, TopicId: "t", WindowStart: 1, WindowEnd: 2, StudentId: "a", ClicksCount: 10}
 	check := func(want float64, n int) {
 		t.Helper()
-		m, c, e := s.SnapshotMedian(context.Background(), r)
+		m, c, e := s.SnapshotMedian(t.Context(), org, r)
 		if e != nil || m != want || c != n {
 			t.Fatalf("median %v count %d err %v; want %v/%d", m, c, e, want, n)
 		}
@@ -41,6 +42,12 @@ func TestSnapshotMedianIntegration(t *testing.T) {
 	r.WindowEnd = 3
 	check(0, 1)
 	r.TopicId = "other"
+	r.ClicksCount = 5
+	check(5, 1)
+	org = "platform-b"
+	r.ClicksCount = 100
+	check(100, 1)
+	org = "platform-a"
 	r.ClicksCount = 5
 	check(5, 1)
 }

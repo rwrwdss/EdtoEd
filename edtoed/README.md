@@ -2,7 +2,8 @@
 
 [English documentation](../README.md) · [Документация на русском](../README.ru.md)
 
-Run from this directory / запуск из этой папки:
+Create the [local key registry](../docs/platform-integration.md#run-the-synthetic-pilot), then run from this directory.
+Создайте [локальный реестр ключей](../docs/platform-integration.md#run-the-synthetic-pilot), затем выполните команду из этой папки:
 
 ```sh
 docker compose up --build

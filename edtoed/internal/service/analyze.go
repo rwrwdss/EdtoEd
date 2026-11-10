@@ -8,6 +8,7 @@ import (
 	"time"
 
 	pb "edtoed/api/proto"
+	"edtoed/internal/auth"
 	"edtoed/internal/features"
 	"edtoed/internal/ml"
 
@@ -16,7 +17,7 @@ import (
 )
 
 type Store interface {
-	SnapshotMedian(context.Context, *pb.StudentActivityRequest) (float64, int, error)
+	SnapshotMedian(context.Context, string, *pb.StudentActivityRequest) (float64, int, error)
 }
 
 type Analyzer struct {
@@ -29,6 +30,10 @@ type Analyzer struct {
 const interventionThreshold float32 = 0.43382675
 
 func (a *Analyzer) AnalyzeStudentMetrics(ctx context.Context, req *pb.StudentActivityRequest) (*pb.AnalyticsResponse, error) {
+	org, ok := auth.Organization(ctx)
+	if !ok {
+		return nil, status.Error(codes.Unauthenticated, "valid bearer key required")
+	}
 	if req == nil || req.StudentId == "" || req.TopicId == "" || req.ClicksCount < 0 || math.IsNaN(float64(req.TestScore)) || req.TestScore < 0 || req.TestScore > 1 || math.IsNaN(float64(req.DeadlineDelay)) || math.IsInf(float64(req.DeadlineDelay), 0) {
 		return nil, status.Error(codes.InvalidArgument, "invalid student activity")
 	}
@@ -37,7 +42,7 @@ func (a *Analyzer) AnalyzeStudentMetrics(ctx context.Context, req *pb.StudentAct
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	median, count, err := a.Store.SnapshotMedian(ctx, req)
+	median, count, err := a.Store.SnapshotMedian(ctx, org, req)
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, status.FromContextError(ctx.Err()).Err()

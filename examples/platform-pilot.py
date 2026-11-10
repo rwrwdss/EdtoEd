@@ -2,18 +2,20 @@
 
 import argparse
 import json
+import os
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
 
-def analyze(base_url, snapshot, *, allow_incomplete=False):
+def analyze(base_url, token, snapshot, *, allow_incomplete=False):
     request = Request(
         f"{base_url.rstrip('/')}/v1/analyze",
         data=json.dumps(snapshot).encode("utf-8"),
         headers={"Content-Type": "application/json"},
         method="POST",
     )
+    request.add_unredirected_header("Authorization", f"Bearer {token}")
     try:
         with urlopen(request, timeout=10) as response:
             return json.load(response)
@@ -25,7 +27,7 @@ def analyze(base_url, snapshot, *, allow_incomplete=False):
             raise RuntimeError(f"analysis returned HTTP {error.code}: {message}") from error
 
 
-def pilot(base_url):
+def pilot(base_url, token):
     cohort_id = f"demo-org:course-1:{uuid4().hex}"
     snapshots = [
         {
@@ -48,11 +50,11 @@ def pilot(base_url):
     # A 409 can follow a successful write while the cohort is incomplete.
     # Ignore provisional scores until every learner has been submitted.
     for snapshot in snapshots:
-        analyze(base_url, snapshot, allow_incomplete=True)
+        analyze(base_url, token, snapshot, allow_incomplete=True)
 
     scores = []
     for snapshot in snapshots:
-        result = analyze(base_url, snapshot)
+        result = analyze(base_url, token, snapshot)
         scores.append(
             {
                 "student_id": result["student_id"],
@@ -68,8 +70,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", default="http://localhost:8080", help="EdtoEd base URL")
     args = parser.parse_args()
+    token = os.environ.get("EDTOED_API_KEY")
+    if not token:
+        parser.error("set EDTOED_API_KEY to the platform bearer key")
     try:
-        print(json.dumps(pilot(args.url), indent=2))
+        print(json.dumps(pilot(args.url, token), indent=2))
     except (URLError, RuntimeError, TimeoutError) as error:
         parser.exit(1, f"Pilot failed: {error}\n")
 

@@ -8,11 +8,13 @@ import (
 	"time"
 
 	pb "edtoed/api/proto"
+	"edtoed/internal/auth"
 	"edtoed/internal/service"
 )
 
 type Handler struct {
 	Analyzer *service.Analyzer
+	Keys     *auth.Keys
 }
 
 type analyzeRequest struct {
@@ -70,6 +72,12 @@ func (h Handler) analyze(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+	ctx, ok := h.Keys.Authenticate(r.Context(), r.Header.Values("Authorization"))
+	if !ok {
+		w.Header().Set("WWW-Authenticate", "Bearer")
+		http.Error(w, "valid bearer key required", http.StatusUnauthorized)
+		return
+	}
 	var input analyzeRequest
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
@@ -82,7 +90,7 @@ func (h Handler) analyze(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "expected one JSON object", http.StatusBadRequest)
 		return
 	}
-	result, err := h.Analyzer.AnalyzeStudentMetrics(r.Context(), &pb.StudentActivityRequest{
+	result, err := h.Analyzer.AnalyzeStudentMetrics(ctx, &pb.StudentActivityRequest{
 		StudentId: input.StudentID, TopicId: input.TopicID, ClicksCount: input.ClicksCount,
 		TestScore: input.TestScore, DeadlineDelay: input.DeadlineDelay,
 		CohortId: input.CohortID, WindowStart: input.WindowStart, WindowEnd: input.WindowEnd,

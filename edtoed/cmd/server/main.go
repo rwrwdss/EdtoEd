@@ -13,6 +13,7 @@ import (
 	"time"
 
 	pb "edtoed/api/proto"
+	"edtoed/internal/auth"
 	"edtoed/internal/httpapi"
 	"edtoed/internal/ml"
 	"edtoed/internal/service"
@@ -33,6 +34,10 @@ func run(ctx context.Context) error {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		return errors.New("DATABASE_URL is required")
+	}
+	keys, err := loadKeys(os.Getenv("EDTOED_KEYS_FILE"))
+	if err != nil {
+		return err
 	}
 	predictor, err := ml.NewRuntime(ctx, envOr("MODEL_PATH", "models/edtoed_v1.onnx"))
 	if err != nil {
@@ -59,10 +64,10 @@ func run(ctx context.Context) error {
 	defer httpListener.Close()
 
 	analyzer := &service.Analyzer{Store: store, Predictor: predictor}
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(keys.Unary))
 	pb.RegisterEdtoEdServiceServer(grpcServer, analyzer)
 	httpServer := &http.Server{
-		Handler:           httpapi.Handler{Analyzer: analyzer}.Routes(),
+		Handler:           httpapi.Handler{Analyzer: analyzer, Keys: keys}.Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      20 * time.Second,
@@ -70,6 +75,18 @@ func run(ctx context.Context) error {
 	}
 	log.Printf("gRPC listening on %s; HTTP listening on %s", grpcListener.Addr(), httpListener.Addr())
 	return serve(ctx, httpServer, httpListener, grpcServer, grpcListener)
+}
+
+func loadKeys(path string) (*auth.Keys, error) {
+	if path == "" {
+		return nil, errors.New("EDTOED_KEYS_FILE is required")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open key registry: %w", err)
+	}
+	defer file.Close()
+	return auth.Load(file)
 }
 
 func serve(ctx context.Context, httpServer *http.Server, httpListener net.Listener, grpcServer *grpc.Server, grpcListener net.Listener) error {
