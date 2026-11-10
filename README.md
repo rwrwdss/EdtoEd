@@ -94,6 +94,7 @@ Test set: 7,929 enrollments. Platt calibration used 2,923 validation enrollments
 |---|---|
 | `DATABASE_URL` | Required PostgreSQL DSN |
 | `EDTOED_KEYS_FILE` | Required path to the key registry |
+| `EDTOED_MAX_CONCURRENT_PER_ORG` | `8`, shared across REST and gRPC on each instance |
 | `MODEL_PATH` | `models/edtoed_v1.onnx` |
 | `PYTHON_BIN` | `python3`; may point to a virtual environment |
 | `HTTP_ADDR` | `:8080` |

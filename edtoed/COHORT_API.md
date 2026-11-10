@@ -12,6 +12,8 @@ The first snapshot and a zero-median cohort produce HTTP 409 / gRPC FailedPrecon
 
 Analysis has a five-second server deadline, including the database write and inference. If HTTP returns 504 or gRPC returns DeadlineExceeded, the snapshot may already be committed. Retry the same snapshot to request a new score without adding another row.
 
+Each organization can run eight analyses concurrently by default on each EdtoEd instance. REST and gRPC share this limit across all keys issued to that organization. When every slot is occupied, REST returns HTTP 429 and gRPC returns `ResourceExhausted` before storing the snapshot. Retry with backoff and jitter. Operators can configure the limit with `EDTOED_MAX_CONCURRENT_PER_ORG`.
+
 ```json
 {"student_id":"student-1","topic_id":"module-1","cohort_id":"orgA-course2026-group1","window_start":1704067200,"window_end":1706486400,"clicks_count":24,"test_score":0.72,"deadline_delay":1.5}
 ```

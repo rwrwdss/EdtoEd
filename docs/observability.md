@@ -11,6 +11,8 @@ Scrape `GET /metrics` on the HTTP listener in Prometheus text format. Keep this 
 
 Both duration metrics are histograms. A request rejected before storage does not contribute to either stage; a snapshot saved without a score contributes only to storage. Health probes, docs and scrapes are excluded. All series are local to the process and reset on restart. Keys, payloads, learner IDs and organization IDs are never used as labels.
 
+Organization concurrency rejections appear as `code="429"` on REST and `code="ResourceExhausted"` on gRPC. Track these outcomes separately from failures in admitted analyses. Latency histograms include rejected requests, so fast rejections can lower reported percentiles even when admitted requests are slower.
+
 Request rate by transport:
 
 ```promql

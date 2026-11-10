@@ -94,6 +94,7 @@ flowchart LR
 |---|---|
 | `DATABASE_URL` | Обязательный PostgreSQL DSN |
 | `EDTOED_KEYS_FILE` | Обязательный путь к реестру ключей |
+| `EDTOED_MAX_CONCURRENT_PER_ORG` | `8` параллельных анализов на организацию, общий лимит REST и gRPC на экземпляре |
 | `MODEL_PATH` | `models/edtoed_v1.onnx` |
 | `PYTHON_BIN` | `python3`; можно указать интерпретатор виртуального окружения |
 | `HTTP_ADDR` | `:8080` |

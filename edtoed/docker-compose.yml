@@ -20,6 +20,7 @@ services:
       DATABASE_URL: postgres://edtoed:edtoed_dev@postgres:5432/edtoed?sslmode=disable
       MODEL_PATH: /app/models/edtoed_v1.onnx
       EDTOED_KEYS_FILE: /run/edtoed/keys.json
+      EDTOED_MAX_CONCURRENT_PER_ORG: ${EDTOED_MAX_CONCURRENT_PER_ORG:-8}
     volumes:
       - type: bind
         source: ${EDTOED_KEYS_FILE:-./keys.local.json}

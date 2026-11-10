@@ -28,4 +28,26 @@ The eight-cohort profile showed interference in both directions: REST p95 rose *
 
 Across each full run, including preparation and drain, mean measured storage/inference times were **13.88/0.03 ms** with one cohort and **1.80/11.86 ms** with eight. That shift is consistent with writes waiting on the same cohort in the first run and reaching the shared inference queue in parallel in the second. The inference metric includes waiting and execution; it cannot attribute the time to model compute alone.
 
-Organization scoping isolates data, while PostgreSQL connections and the ONNX worker are shared. Before setting a latency objective for a shared deployment, test longer runs on the target infrastructure and consider per-organization admission limits. These short loopback measurements exclude TLS, ingress and WAN latency and are not a capacity guarantee or a REST-versus-gRPC ranking.
+Organization scoping isolates data, while PostgreSQL connections and the ONNX worker are shared. These short loopback measurements exclude TLS, ingress and WAN latency.
+
+## Follow-up with an organization concurrency limit
+
+The follow-up compares `36026ba` with the new default of eight concurrent analyses per organization. The two binaries ran on the same host with the same database, model, credentials and synthetic workload. Each platform had eight cohorts of 64 learners. The test alternated binary order (before, after, after, before) and reset and seeded the temporary database between runs.
+
+Each window measured six seconds after a one-second background lead-in. The probe scheduled 40 requests/s and the background generator scheduled 4,800 requests/s in batches of 24 every 5 ms, with at most 72 outstanding requests. When all 72 client slots were occupied, the generator skipped that scheduled request and counted it separately. Reported p95 ranges span two runs per version and direction, using only successful requests. Outcome counts sum those two runs.
+
+| Probe / background | Probe p95 before, ms | Probe p95 after, ms | Probe errors or rejections |
+|---|---:|---:|---:|
+| REST A / gRPC B | 36.55–38.82 | 4.10–5.36 | 0/480 before, 0/480 after |
+| gRPC B / REST A | 44.39–58.59 | 5.17–7.80 | 0/480 before, 0/480 after |
+
+| Background | Version | Successful p95, ms | Successful | Limit rejections | Other errors | Skipped by generator |
+|---|---|---:|---:|---:|---:|---:|
+| gRPC B | Before | 44.92–50.96 | 26,411 | 0 | 0 | 31,189 |
+| gRPC B | After | 4.21–5.06 | 18,513 | 39,025 | 0 | 62 |
+| REST A | Before | 46.01–53.28 | 25,996 | 0 | 0 | 31,604 |
+| REST A | After | 4.15–5.26 | 18,570 | 38,786 | 0 | 244 |
+
+The generator scheduled 57,600 background requests per direction and version. Before the change, occupied client slots suppressed much of the scheduled traffic. After the change, EdtoEd quickly returned HTTP 429 or gRPC `ResourceExhausted` on about 68% of the scheduled background traffic. The control streams completed every request, and background throughput fell in exchange for lower latency. The counts distinguish offered demand, actual calls and completed analyses.
+
+A separate check held all eight slots of one organization with REST calls. Its gRPC call was rejected, the other organization completed a gRPC analysis, and the first organization could call again after the held requests finished. The limit applies per EdtoEd instance. These results describe this burst pattern and local setup. Production retry pacing and network costs will change the observed rates.

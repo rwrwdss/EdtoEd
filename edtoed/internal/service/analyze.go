@@ -26,6 +26,7 @@ type Analyzer struct {
 	Store     Store
 	Predictor ml.Predictor
 	Metrics   *telemetry.Metrics
+	Limiter   *OrganizationLimiter
 }
 
 // Selected on the 2014B threshold subset (F2, precision >= 0.6).
@@ -41,6 +42,12 @@ func (a *Analyzer) AnalyzeStudentMetrics(ctx context.Context, req *pb.StudentAct
 	}
 	if strings.TrimSpace(req.CohortId) == "" || req.WindowStart <= 0 || req.WindowEnd <= req.WindowStart || req.WindowEnd > time.Now().Unix() {
 		return nil, status.Error(codes.InvalidArgument, "cohort and completed observation window required")
+	}
+	if a.Limiter != nil {
+		if !a.Limiter.acquire(org) {
+			return nil, status.Error(codes.ResourceExhausted, "organization has too many concurrent analyses")
+		}
+		defer a.Limiter.release(org)
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

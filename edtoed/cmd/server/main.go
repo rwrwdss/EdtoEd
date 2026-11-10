@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -35,6 +36,10 @@ func run(ctx context.Context) error {
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		return errors.New("DATABASE_URL is required")
+	}
+	orgLimit, err := strconv.Atoi(envOr("EDTOED_MAX_CONCURRENT_PER_ORG", "8"))
+	if err != nil || orgLimit < 1 {
+		return errors.New("EDTOED_MAX_CONCURRENT_PER_ORG must be a positive integer")
 	}
 	keys, err := loadKeys(os.Getenv("EDTOED_KEYS_FILE"))
 	if err != nil {
@@ -65,7 +70,12 @@ func run(ctx context.Context) error {
 	defer httpListener.Close()
 
 	metrics := telemetry.New()
-	analyzer := &service.Analyzer{Store: store, Predictor: predictor, Metrics: metrics}
+	analyzer := &service.Analyzer{
+		Store:     store,
+		Predictor: predictor,
+		Metrics:   metrics,
+		Limiter:   service.NewOrganizationLimiter(orgLimit),
+	}
 	grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(metrics.Unary, keys.Unary))
 	pb.RegisterEdtoEdServiceServer(grpcServer, analyzer)
 	httpServer := &http.Server{

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	pb "edtoed/api/proto"
 	"edtoed/internal/auth"
@@ -26,8 +27,12 @@ func (s storeStub) SnapshotMedian(context.Context, string, *pb.StudentActivityRe
 
 func platformContext(t *testing.T) context.Context {
 	t.Helper()
-	token := strings.Repeat("b", 64)
-	registry := fmt.Sprintf(`[{"organization_id":"platform","sha256":"%x"}]`, sha256.Sum256([]byte(token)))
+	return organizationContext(t, "platform", strings.Repeat("b", 64))
+}
+
+func organizationContext(t *testing.T, org, token string) context.Context {
+	t.Helper()
+	registry := fmt.Sprintf(`[{"organization_id":%q,"sha256":"%x"}]`, org, sha256.Sum256([]byte(token)))
 	keys, err := auth.Load(strings.NewReader(registry))
 	if err != nil {
 		t.Fatal(err)
@@ -37,6 +42,55 @@ func platformContext(t *testing.T) context.Context {
 		t.Fatal("expected authenticated context")
 	}
 	return ctx
+}
+
+type heldStore struct {
+	entered chan struct{}
+}
+
+func (s heldStore) SnapshotMedian(ctx context.Context, org string, req *pb.StudentActivityRequest) (float64, int, error) {
+	if org == "platform" && req.StudentId == "held" {
+		close(s.entered)
+		<-ctx.Done()
+		return 0, 0, ctx.Err()
+	}
+	return 20, 3, nil
+}
+
+func TestOrganizationLimitSharesKeysAndReleasesOnCancel(t *testing.T) {
+	store := heldStore{entered: make(chan struct{})}
+	a := Analyzer{Store: store, Predictor: fixedRisk(.2), Limiter: NewOrganizationLimiter(1)}
+	ctx, cancel := context.WithCancel(platformContext(t))
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := a.AnalyzeStudentMetrics(ctx, &pb.StudentActivityRequest{
+			StudentId: "held", TopicId: "t", CohortId: "c", WindowStart: 1, WindowEnd: 2,
+		})
+		done <- err
+	}()
+	select {
+	case <-store.entered:
+	case <-time.After(time.Second):
+		t.Fatal("first analysis did not reach storage")
+	}
+
+	req := &pb.StudentActivityRequest{StudentId: "s", TopicId: "t", CohortId: "c", WindowStart: 1, WindowEnd: 2}
+	secondKey := organizationContext(t, "platform", strings.Repeat("c", 64))
+	if _, err := a.AnalyzeStudentMetrics(secondKey, req); status.Code(err) != codes.ResourceExhausted {
+		t.Fatalf("second key for the same organization: %v", err)
+	}
+	other := organizationContext(t, "other", strings.Repeat("d", 64))
+	if _, err := a.AnalyzeStudentMetrics(other, req); err != nil {
+		t.Fatalf("other organization: %v", err)
+	}
+	cancel()
+	if err := <-done; status.Code(err) != codes.Canceled {
+		t.Fatalf("held request: %v", err)
+	}
+	if _, err := a.AnalyzeStudentMetrics(secondKey, req); err != nil {
+		t.Fatalf("slot was not released: %v", err)
+	}
 }
 
 type capture struct{ v features.Vector }

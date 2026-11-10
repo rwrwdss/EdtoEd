@@ -46,6 +46,7 @@ paths:
         '400': {description: Invalid request}
         '401': {description: Missing or invalid platform bearer key}
         '408': {description: Request canceled}
+        '429': {description: Organization concurrency limit reached before snapshot storage}
         '503': {description: Model or dependency unavailable}
         '504': {description: Analysis deadline exceeded; the snapshot may already be saved}
 components:
@@ -92,6 +93,8 @@ func grpcCodeToHTTP(err error) int {
 		return http.StatusBadRequest
 	case "Unauthenticated":
 		return http.StatusUnauthorized
+	case "ResourceExhausted":
+		return http.StatusTooManyRequests
 	case "FailedPrecondition":
 		return http.StatusConflict
 	case "Unavailable":
