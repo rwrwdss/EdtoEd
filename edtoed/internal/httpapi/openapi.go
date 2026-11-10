@@ -42,7 +42,9 @@ paths:
               schema: {$ref: '#/components/schemas/AnalyticsResponse'}
         '409': {description: Snapshot saved but cohort needs two students and positive median}
         '400': {description: Invalid request}
+        '408': {description: Request canceled}
         '503': {description: Model or dependency unavailable}
+        '504': {description: Analysis deadline exceeded; the snapshot may already be saved}
 components:
   schemas:
     StudentActivityRequest:
@@ -84,6 +86,10 @@ func grpcCodeToHTTP(err error) int {
 		return http.StatusConflict
 	case "Unavailable":
 		return http.StatusServiceUnavailable
+	case "Canceled":
+		return http.StatusRequestTimeout
+	case "DeadlineExceeded":
+		return http.StatusGatewayTimeout
 	default:
 		return http.StatusInternalServerError
 	}

@@ -20,11 +20,16 @@ func (s storeStub) SnapshotMedian(context.Context, *pb.StudentActivityRequest) (
 
 type capture struct{ v features.Vector }
 
-func (p *capture) Predict(v features.Vector) (float32, error) { p.v = v; return .2, nil }
+func (p *capture) Predict(_ context.Context, v features.Vector) (float32, error) {
+	p.v = v
+	return .2, nil
+}
 
 type fixedRisk float32
 
-func (p fixedRisk) Predict(features.Vector) (float32, error) { return float32(p), nil }
+func (p fixedRisk) Predict(context.Context, features.Vector) (float32, error) {
+	return float32(p), nil
+}
 func TestInterventionThreshold(t *testing.T) {
 	r := &pb.StudentActivityRequest{StudentId: "s", TopicId: "t", CohortId: "c", WindowStart: 1, WindowEnd: 2, ClicksCount: 30, TestScore: .5}
 	a := Analyzer{Store: storeStub{20, 3}, Predictor: fixedRisk(interventionThreshold - .001)}

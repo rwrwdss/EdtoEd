@@ -14,7 +14,7 @@ func TestSnapshotMedianIntegration(t *testing.T) {
 	if dsn == "" {
 		t.Skip("TEST_DATABASE_URL required")
 	}
-	s, err := NewStorage(dsn)
+	s, err := NewStorage(t.Context(), dsn)
 	if err != nil {
 		t.Fatal(err)
 	}

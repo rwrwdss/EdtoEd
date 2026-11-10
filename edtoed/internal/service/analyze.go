@@ -39,15 +39,21 @@ func (a *Analyzer) AnalyzeStudentMetrics(ctx context.Context, req *pb.StudentAct
 	defer cancel()
 	median, count, err := a.Store.SnapshotMedian(ctx, req)
 	if err != nil {
+		if ctx.Err() != nil {
+			return nil, status.FromContextError(ctx.Err()).Err()
+		}
 		return nil, status.Error(codes.Internal, "could not save activity")
 	}
 	if count < 2 || median <= 0 || math.IsNaN(median) || math.IsInf(median, 0) {
 		return nil, status.Error(codes.FailedPrecondition, "snapshot saved; need two students and positive median")
 	}
 	vector := features.Build(req.ClicksCount, median, req.TestScore, req.DeadlineDelay)
-	risk, err := a.Predictor.Predict(vector)
+	risk, err := a.Predictor.Predict(ctx, vector)
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return nil, status.FromContextError(err).Err()
+	}
 	if errors.Is(err, ml.ErrInferenceUnavailable) {
-		return nil, status.Error(codes.Unavailable, err.Error())
+		return nil, status.Error(codes.Unavailable, "model inference is unavailable")
 	}
 	if err != nil {
 		return nil, status.Error(codes.Internal, "prediction failed")

@@ -16,14 +16,22 @@ import (
 type testStore struct{}
 type testPredictor struct{}
 type unhealthyPredictor struct{ testPredictor }
+type timedOutPredictor struct{}
 
-func (unhealthyPredictor) Ready() bool { return false }
+func (timedOutPredictor) Predict(ctx context.Context, _ features.Vector) (float32, error) {
+	if _, ok := ctx.Deadline(); !ok {
+		return 0, errors.New("analysis context has no deadline")
+	}
+	return 0, context.DeadlineExceeded
+}
+
+func (unhealthyPredictor) Ready(context.Context) bool { return false }
 
 type unhealthyStore struct{ testStore }
 
 func (unhealthyStore) Ping(context.Context) error { return errors.New("database down") }
 
-func (testPredictor) Predict(features.Vector) (float32, error) { return 0.3, nil }
+func (testPredictor) Predict(context.Context, features.Vector) (float32, error) { return 0.3, nil }
 
 func (testStore) SnapshotMedian(context.Context, *pb.StudentActivityRequest) (float64, int, error) {
 	return 5, 2, nil
@@ -65,5 +73,15 @@ func TestReadinessAndJSONBoundary(t *testing.T) {
 	h.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/analyze", strings.NewReader(`{} {}`)))
 	if res.Code != http.StatusBadRequest {
 		t.Fatalf("multiple JSON values: %d", res.Code)
+	}
+}
+
+func TestAnalyzeReportsInferenceTimeout(t *testing.T) {
+	h := Handler{Analyzer: &service.Analyzer{Store: testStore{}, Predictor: timedOutPredictor{}}}.Routes()
+	body := `{"cohort_id":"c","window_start":1,"window_end":2,"student_id":"s","topic_id":"t","clicks_count":10,"test_score":0.8,"deadline_delay":0}`
+	res := httptest.NewRecorder()
+	h.ServeHTTP(res, httptest.NewRequest(http.MethodPost, "/v1/analyze", strings.NewReader(body)))
+	if res.Code != http.StatusGatewayTimeout {
+		t.Fatalf("status %d: %s", res.Code, res.Body.String())
 	}
 }

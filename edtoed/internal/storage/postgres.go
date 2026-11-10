@@ -3,10 +3,11 @@ package storage
 import (
 	"context"
 	"database/sql"
-	pb "edtoed/api/proto"
 	_ "embed"
 	"encoding/json"
 	"fmt"
+
+	pb "edtoed/api/proto"
 
 	_ "github.com/lib/pq"
 )
@@ -23,21 +24,21 @@ type Storage struct {
 
 func (s *Storage) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 
-func NewStorage(connStr string) (*Storage, error) {
+func NewStorage(ctx context.Context, connStr string) (*Storage, error) {
 	db, err := sql.Open("postgres", connStr)
 	if err != nil {
 		return nil, err
 	}
-	if err := db.PingContext(context.Background()); err != nil {
+	if err := db.PingContext(ctx); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("connect to postgres: %w", err)
 	}
 
-	if _, err := db.ExecContext(context.Background(), initialMigration); err != nil {
+	if _, err := db.ExecContext(ctx, initialMigration); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("create lms_anonymous_logs: %w", err)
 	}
-	if _, err := db.ExecContext(context.Background(), snapshotMigration); err != nil {
+	if _, err := db.ExecContext(ctx, snapshotMigration); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -51,6 +52,8 @@ func (s *Storage) SnapshotMedian(ctx context.Context, r *pb.StudentActivityReque
 		return 0, 0, err
 	}
 	defer tx.Rollback()
+	// Serialize writes to this window so the median includes the just-saved
+	// snapshot and cannot race another update in the same cohort.
 	key, _ := json.Marshal([]any{r.CohortId, r.TopicId, r.WindowStart, r.WindowEnd})
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, string(key)); err != nil {
 		return 0, 0, err
@@ -68,13 +71,6 @@ func (s *Storage) SnapshotMedian(ctx context.Context, r *pb.StudentActivityReque
 	}
 	err = tx.Commit()
 	return median, count, err
-}
-
-// SaveLog сохраняет анонимный лог для последующего переобучения модели
-func (s *Storage) SaveLog(uid, tid string, clicks int, score, delay float32) error {
-	query := `INSERT INTO lms_anonymous_logs (student_id, topic_id, clicks_count, test_score, deadline_delay) VALUES ($1, $2, $3, $4, $5)`
-	_, err := s.db.ExecContext(context.Background(), query, uid, tid, clicks, score, delay)
-	return err
 }
 
 func (s *Storage) Close() error {

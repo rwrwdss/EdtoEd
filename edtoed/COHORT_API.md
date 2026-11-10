@@ -10,8 +10,10 @@ Median includes all submitted students, including zeros, and the current snapsho
 
 The first snapshot and a zero-median cohort produce HTTP 409 / gRPC FailedPrecondition after persistence. Submit the rest of the cohort and retry scoring. Predictions may change while the cohort is being populated; full-roster completeness is the integrator's responsibility. There is no hidden denominator fallback.
 
+Analysis has a five-second server deadline, including the database write and inference. If HTTP returns 504 or gRPC returns DeadlineExceeded, the snapshot may already be committed. Retry the same snapshot to request a new score without adding another row.
+
 ```json
 {"student_id":"student-1","topic_id":"module-1","cohort_id":"orgA-course2026-group1","window_start":1704067200,"window_end":1706486400,"clicks_count":24,"test_score":0.72,"deadline_delay":1.5}
 ```
 
-This is a breaking validation change for old clients. Swagger is served at `/docs` and the schema at `/openapi.yaml`. Current model was trained on early course aggregates, not arbitrary window lengths; API flexibility does not establish model accuracy on new domains. The promoted model now uses inclusive cohort medians and signed delays. Missing assessments map to score=0 and delay=0 in training; integrators must reproduce this convention. External validation and probability calibration remain pending.
+Swagger is served at `/docs` and the schema at `/openapi.yaml`. The model was trained on early course aggregates and calibrated on OULAD. Its accuracy and calibration on other window lengths or institutions still need external validation. The model uses inclusive cohort medians and signed delays. Missing assessments map to score=0 and delay=0 in training; integrators should reproduce this convention.

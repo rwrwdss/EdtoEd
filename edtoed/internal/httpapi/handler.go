@@ -45,18 +45,18 @@ func (h Handler) Routes() http.Handler {
 
 func health(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }
 
-func (h Handler) ready(w http.ResponseWriter, _ *http.Request) {
+func (h Handler) ready(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+	defer cancel()
 	if h.Analyzer == nil || h.Analyzer.Store == nil || h.Analyzer.Predictor == nil {
 		http.Error(w, `{"status":"not_ready"}`, http.StatusServiceUnavailable)
 		return
 	}
-	if health, ok := h.Analyzer.Predictor.(interface{ Ready() bool }); ok && !health.Ready() {
+	if health, ok := h.Analyzer.Predictor.(interface{ Ready(context.Context) bool }); ok && !health.Ready(ctx) {
 		http.Error(w, "model unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	if health, ok := h.Analyzer.Store.(interface{ Ping(context.Context) error }); ok {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
 		if err := health.Ping(ctx); err != nil {
 			http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 			return
