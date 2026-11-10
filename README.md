@@ -10,7 +10,7 @@
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-4169E1?logo=postgresql&logoColor=white)
 ![API](https://img.shields.io/badge/API-REST_%2B_gRPC-181717)
 
-An LMS-independent analytics backend that turns cohort activity snapshots into academic-risk scores. Integrate through REST or gRPC; inspect the API in Swagger UI.
+EdtoEd is a standalone academic-risk scoring service that online schools, course platforms, and LMS products can embed in their workflows. The platform maps its own activity data to a common snapshot contract and calls EdtoEd over REST or gRPC. See the [platform integration guide](docs/platform-integration.md) for the data mapping and a runnable pilot with synthetic learners.
 
 ## What it does
 
