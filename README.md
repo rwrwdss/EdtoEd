@@ -71,7 +71,7 @@ flowchart LR
     W --> R[Risk score]
 ```
 
-The model is loaded once, with one CPU compute thread. Requests are serialized per worker. Invalid model files fail startup; worker failure currently requires a service restart.
+Each worker loads the model once and uses one CPU compute thread. Requests share a five-second analysis deadline across storage, queueing and inference. If a worker fails during inference, that request fails and the next request or readiness probe can start a fresh worker.
 
 ## Model and evidence
 
@@ -126,6 +126,6 @@ Set `TEST_DATABASE_URL` to a disposable PostgreSQL database to enable storage in
 | `edtoed/ml_research/` | Training code, research candidate and reports |
 | `.github/workflows/` | CI |
 
-Next priorities: external validation, authentication and tenant isolation, telemetry and load testing. Readiness runs a live model probe and database ping. If the ONNX worker fails, the request returns Unavailable while the service restarts the worker; the next request can succeed.
+Readiness runs a live model probe and database ping. See [CONTRIBUTING.md](CONTRIBUTING.md) for local checks and commit conventions. Next priorities: external validation, authentication and tenant isolation, telemetry, and load testing.
 
 Dataset attribution: Kuzilek, Hlosta and Zdrahal, [OULAD](https://doi.org/10.24432/C5KK69), CC BY 4.0. This dataset license does not imply a license for the repository code.
