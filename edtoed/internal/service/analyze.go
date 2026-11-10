@@ -11,6 +11,7 @@ import (
 	"edtoed/internal/auth"
 	"edtoed/internal/features"
 	"edtoed/internal/ml"
+	"edtoed/internal/telemetry"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -24,6 +25,7 @@ type Analyzer struct {
 	pb.UnimplementedEdtoEdServiceServer
 	Store     Store
 	Predictor ml.Predictor
+	Metrics   *telemetry.Metrics
 }
 
 // Selected on the 2014B threshold subset (F2, precision >= 0.6).
@@ -42,7 +44,9 @@ func (a *Analyzer) AnalyzeStudentMetrics(ctx context.Context, req *pb.StudentAct
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+	started := time.Now()
 	median, count, err := a.Store.SnapshotMedian(ctx, org, req)
+	a.Metrics.ObserveStorage(time.Since(started))
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, status.FromContextError(ctx.Err()).Err()
@@ -53,7 +57,9 @@ func (a *Analyzer) AnalyzeStudentMetrics(ctx context.Context, req *pb.StudentAct
 		return nil, status.Error(codes.FailedPrecondition, "snapshot saved; need two students and positive median")
 	}
 	vector := features.Build(req.ClicksCount, median, req.TestScore, req.DeadlineDelay)
+	started = time.Now()
 	risk, err := a.Predictor.Predict(ctx, vector)
+	a.Metrics.ObserveInference(time.Since(started))
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		return nil, status.FromContextError(err).Err()
 	}

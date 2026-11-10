@@ -33,6 +33,7 @@ Requires Docker with Compose. Create a local key registry and start the service 
 | REST | `POST /v1/analyze` |
 | gRPC | `localhost:50051` |
 | Probes | `GET /healthz`, `GET /readyz` |
+| Metrics | `GET /metrics` ([scrape and query guide](docs/observability.md)) |
 
 Compose uses development database credentials. Swagger UI loads its assets from a public CDN.
 
@@ -122,6 +123,6 @@ Set `TEST_DATABASE_URL` to a disposable PostgreSQL database to enable storage in
 | `edtoed/ml_research/` | Training code, research candidate and reports |
 | `.github/workflows/` | CI |
 
-Readiness runs a live model probe and database ping. See [CONTRIBUTING.md](CONTRIBUTING.md) for local checks and commit conventions. Next priorities: external validation, telemetry, and load testing.
+Readiness runs a live model probe and database ping. See the [two-platform load report](docs/load-report.md) for measured contention on a shared instance and [CONTRIBUTING.md](CONTRIBUTING.md) for local checks and commit conventions.
 
 Dataset attribution: Kuzilek, Hlosta and Zdrahal, [OULAD](https://doi.org/10.24432/C5KK69), CC BY 4.0. This dataset license does not imply a license for the repository code.

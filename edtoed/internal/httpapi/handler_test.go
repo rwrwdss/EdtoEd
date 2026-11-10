@@ -14,6 +14,7 @@ import (
 	"edtoed/internal/auth"
 	"edtoed/internal/features"
 	"edtoed/internal/service"
+	"edtoed/internal/telemetry"
 )
 
 type testStore struct{}
@@ -48,7 +49,9 @@ func analysisHandler(t *testing.T, analyzer *service.Analyzer) (http.Handler, st
 	if err != nil {
 		t.Fatal(err)
 	}
-	return Handler{Analyzer: analyzer, Keys: keys}.Routes(), "Bearer " + token
+	metrics := telemetry.New()
+	analyzer.Metrics = metrics
+	return Handler{Analyzer: analyzer, Keys: keys, Metrics: metrics}.Routes(), "Bearer " + token
 }
 
 func TestAnalyzeAndDocsRoutes(t *testing.T) {
@@ -74,6 +77,24 @@ func TestAnalyzeAndDocsRoutes(t *testing.T) {
 		if res.Code != http.StatusOK {
 			t.Fatalf("%s returned %d", path, res.Code)
 		}
+	}
+
+	res = httptest.NewRecorder()
+	h.ServeHTTP(res, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	for _, sample := range []string{
+		`edtoed_analysis_requests_total{transport="rest",code="401"} 1`,
+		`edtoed_analysis_requests_total{transport="rest",code="200"} 1`,
+		`edtoed_analysis_in_flight{transport="rest"} 0`,
+		`edtoed_analysis_duration_seconds_count{transport="rest"} 2`,
+		`edtoed_analysis_stage_duration_seconds_count{stage="storage"} 1`,
+		`edtoed_analysis_stage_duration_seconds_count{stage="inference"} 1`,
+	} {
+		if !strings.Contains(res.Body.String(), sample+"\n") {
+			t.Errorf("missing sample %q", sample)
+		}
+	}
+	if strings.Contains(res.Body.String(), authorization) {
+		t.Fatal("metrics exposed the authorization header")
 	}
 }
 

@@ -10,11 +10,13 @@ import (
 	pb "edtoed/api/proto"
 	"edtoed/internal/auth"
 	"edtoed/internal/service"
+	"edtoed/internal/telemetry"
 )
 
 type Handler struct {
 	Analyzer *service.Analyzer
 	Keys     *auth.Keys
+	Metrics  *telemetry.Metrics
 }
 
 type analyzeRequest struct {
@@ -41,7 +43,12 @@ func (h Handler) Routes() http.Handler {
 	mux.HandleFunc("GET /readyz", h.ready)
 	mux.HandleFunc("GET /openapi.yaml", openAPI)
 	mux.HandleFunc("GET /docs", swaggerUI)
-	mux.HandleFunc("POST /v1/analyze", h.analyze)
+	analyze := h.analyze
+	if h.Metrics != nil {
+		analyze = h.Metrics.HTTP(analyze)
+		mux.Handle("GET /metrics", h.Metrics)
+	}
+	mux.HandleFunc("POST /v1/analyze", analyze)
 	return withJSONHeaders(mux)
 }
 

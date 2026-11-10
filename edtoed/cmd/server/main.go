@@ -18,6 +18,7 @@ import (
 	"edtoed/internal/ml"
 	"edtoed/internal/service"
 	"edtoed/internal/storage"
+	"edtoed/internal/telemetry"
 
 	"google.golang.org/grpc"
 )
@@ -63,11 +64,12 @@ func run(ctx context.Context) error {
 	}
 	defer httpListener.Close()
 
-	analyzer := &service.Analyzer{Store: store, Predictor: predictor}
-	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(keys.Unary))
+	metrics := telemetry.New()
+	analyzer := &service.Analyzer{Store: store, Predictor: predictor, Metrics: metrics}
+	grpcServer := grpc.NewServer(grpc.ChainUnaryInterceptor(metrics.Unary, keys.Unary))
 	pb.RegisterEdtoEdServiceServer(grpcServer, analyzer)
 	httpServer := &http.Server{
-		Handler:           httpapi.Handler{Analyzer: analyzer, Keys: keys}.Routes(),
+		Handler:           httpapi.Handler{Analyzer: analyzer, Keys: keys, Metrics: metrics}.Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      20 * time.Second,
